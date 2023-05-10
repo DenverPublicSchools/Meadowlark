@@ -266,6 +266,22 @@ export const createDocumentTableUniqueIndexSql =
   'CREATE UNIQUE INDEX IF NOT EXISTS ux_meadowlark_documents ON meadowlark.documents(document_id)';
 
 /**
+ * SQL query string to create authorizations document table
+ */
+export const createAuthorizationsTableSql = `
+  CREATE TABLE IF NOT EXISTS meadowlark.authorizations(
+  id bigserial PRIMARY KEY,
+  client_secret_hashed VARCHAR NOT NULL,
+  client_name VARCHAR NOT NULL,
+  roles TEXT[] NOT NULL,
+  is_bootstrap_admin BOOLEAN NOT NULL,
+  active BOOLEAN NOT NULL);`;
+
+// Index the client name
+export const createAuthorizationsTableUniqueIndexSql = 
+  'CREATE INDEX idx_authorizations_client_name ON meadowlark.authorizations(client_name)';
+
+/**
  * SQL query string to create the references table
  */
 export const createReferencesTableSql = `

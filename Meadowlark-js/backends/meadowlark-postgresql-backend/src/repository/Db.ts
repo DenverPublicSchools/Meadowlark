@@ -17,6 +17,8 @@ import {
   createAliasesTableSql,
   createAliasesTableDocumentIndexSql,
   createAliasesTableAliasIndexSql,
+  createAuthorizationsTableUniqueIndexSql,
+  createAuthorizationsTableSql,
 } from './SqlHelper';
 
 let singletonDbPool: Pool | null = null;
@@ -46,6 +48,8 @@ export async function checkExistsAndCreateTables(client: PoolClient) {
     await client.query(createAliasesTableSql);
     await client.query(createAliasesTableDocumentIndexSql);
     await client.query(createAliasesTableAliasIndexSql);
+    await client.query(createAuthorizationsTableSql);
+    await client.query(createAuthorizationsTableUniqueIndexSql);
   } catch (e) {
     Logger.error(`${moduleName}.checkExistsAndCreateTables error connecting to PostgreSQL`, null, e);
     throw e;
