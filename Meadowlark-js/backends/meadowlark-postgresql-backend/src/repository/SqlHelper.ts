@@ -270,7 +270,7 @@ export const createDocumentTableUniqueIndexSql =
  */
 export const createAuthorizationsTableSql = `
   CREATE TABLE IF NOT EXISTS meadowlark.authorizations(
-  id bigserial PRIMARY KEY,
+  client_id VARCHAR PRIMARY KEY,
   client_secret_hashed VARCHAR NOT NULL,
   client_name VARCHAR NOT NULL,
   roles TEXT[] NOT NULL,
@@ -279,7 +279,7 @@ export const createAuthorizationsTableSql = `
 
 // Index the client name
 export const createAuthorizationsTableUniqueIndexSql = 
-  'CREATE INDEX idx_authorizations_client_name ON meadowlark.authorizations(client_name)';
+  'CREATE INDEX IF NOT EXISTS idx_authorizations_client_name ON meadowlark.authorizations(client_name)'; // should this be unique? - MaxP
 
 /**
  * SQL query string to create the references table
