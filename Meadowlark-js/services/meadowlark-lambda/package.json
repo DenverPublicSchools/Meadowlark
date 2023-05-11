@@ -1,0 +1,38 @@
+{
+  "name": "@edfi/meadowlark-lambda",
+  "version": "0.1.0",
+  "bin": {
+    "meadowlark-lambda": "bin/meadowlark-lambda.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.4.0",
+    "@types/node": "18.14.6",
+    "jest": "^29.5.0",
+    "ts-jest": "^29.0.5",
+    "aws-cdk": "2.76.0",
+    "ts-node": "^10.9.1",
+    "typescript": "~4.9.5",
+    "@edfi/meadowlark-authz-server": "^v0.3.0-pre-35",
+    "@edfi/meadowlark-core": "^v0.3.0-pre-35",
+    "@edfi/meadowlark-utilities": "^v0.3.0-pre-35",
+    "aws-lambda": "^1.0.7",
+    "dotenv": "^16.0.3",
+    "lodash": "*",
+    "uuid": "*"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.76.0",
+    "constructs": "^10.0.0",
+    "source-map-support": "^0.5.21",
+    "@types/aws-lambda": "^8.10.115",
+    "@types/lodash": "4.14.194",
+    "@types/node": "*",
+    "@types/uuid": "*"
+  }
+}
