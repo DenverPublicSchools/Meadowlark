@@ -6,7 +6,7 @@ import { join } from 'path';
 import { RestApi, IResource, LambdaIntegration, MockIntegration, PassthroughBehavior, SpecRestApi, ApiDefinition, Deployment, StageProps, Stage } from 'aws-cdk-lib/aws-apigateway';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Config } from '@edfi/meadowlark-utilities';
-import { writeFile } from 'fs';
+import { isObject, transform } from 'lodash';
 
 const LAMBDAS = join(__dirname, '..', 'lambda');
 
@@ -200,8 +200,8 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     /**
      * API Gateway Services
      */
-    const resourcesSpec = addLambdaCrudHandlers(JSON.parse(props.resourcesSwaggerDefinition), crudHandlers, apiGatewayRole)
-    const descriptorsSpec = addLambdaCrudHandlers(JSON.parse(props.descriptorsSwaggerDefinition), crudHandlers, apiGatewayRole)
+    const resourcesSpec = addLambdaCrudHandlers(rOmit(rOmit(JSON.parse(props.resourcesSwaggerDefinition), 'description'), 'summary'), crudHandlers, apiGatewayRole)
+    const descriptorsSpec = addLambdaCrudHandlers(rOmit(rOmit(JSON.parse(props.descriptorsSwaggerDefinition), 'description'), 'summary'), crudHandlers, apiGatewayRole)
     
     const meadowlarkResourcesApi = new SpecRestApi(this, 'MeadowlarkApi_Resources', {
       apiDefinition: ApiDefinition.fromInline(resourcesSpec)
@@ -278,6 +278,18 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     meadowlarkSupportingApi.deploymentStage = new Stage(this, 'MeadowlarkApiStage', stageProps);
   }
 }
+
+function rOmit(obj: object, key: string) {
+  if (isObject(obj)) {
+    return transform(obj, (result: object, value: object, currentKey: string) => {
+      if (currentKey !== key) {
+        result[currentKey] = rOmit(value, key);
+      }
+    });
+  } else {
+    return obj;
+  }
+};
 
 function addLambdaCrudHandlers(spec: any, crudHandlers: { [method: string]: NodejsFunction }, apiGatewayRole: iam.Role): object {
   for (const path in spec.paths) {
