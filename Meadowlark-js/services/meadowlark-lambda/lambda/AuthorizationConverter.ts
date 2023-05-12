@@ -34,7 +34,10 @@ export function respondWith(authorizationResponse: AuthorizationResponse): APIGa
   return {
     statusCode: authorizationResponse.statusCode,
     body: body,
-    headers: headers,
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+    },
     isBase64Encoded: false
   };
 }

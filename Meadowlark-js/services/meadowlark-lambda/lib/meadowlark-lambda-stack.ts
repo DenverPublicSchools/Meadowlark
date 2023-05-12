@@ -3,20 +3,16 @@ import { Construct } from 'constructs';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction, NodejsFunctionProps } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { join } from 'path';
-import dotenv from 'dotenv';
-import { cloneDeep, omit } from 'lodash';
-import { RestApi, IResource, LambdaIntegration, MockIntegration, PassthroughBehavior, SpecRestApi, ApiDefinition } from 'aws-cdk-lib/aws-apigateway';
-import { swaggerForResourcesAPI, swaggerForDescriptorsAPI, FrontendRequest, newFrontendRequest } from '@edfi/meadowlark-core';
+import { RestApi, IResource, LambdaIntegration, MockIntegration, PassthroughBehavior, SpecRestApi, ApiDefinition, Deployment, StageProps, Stage } from 'aws-cdk-lib/aws-apigateway';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import { Config } from '@edfi/meadowlark-utilities';
 
-const LAMBDAS = join(__dirname, 'lambda');
-
-const originalEnv = cloneDeep(process.env);
-dotenv.config();
-const dotenvVars: NodeJS.ProcessEnv = omit(process.env, Object.keys(originalEnv));
+const LAMBDAS = join(__dirname, '..', 'lambda');
 
 interface MeadowlarkStackProps extends cdk.StackProps {
   resourcesSwaggerDefinition: string;
   descriptorsSwaggerDefinition: string;
+  dotenvVars: NodeJS.ProcessEnv;
 }
 
 export class MeadowlarkLambdaStack extends cdk.Stack {
@@ -29,10 +25,10 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
           'aws-sdk',
         ]
       },
-      depsLockFilePath: join(LAMBDAS, 'package-lock.json'),
+      depsLockFilePath: join(LAMBDAS, '../../..', 'package-lock.json'),
       environment: {
         // Add defaults here
-        ...dotenvVars as unknown as { [key: string]: string } // Weird hack
+        ...props.dotenvVars as unknown as { [key: string]: string } // Weird hack
       },
       runtime: Runtime.NODEJS_16_X
     }
@@ -149,10 +145,13 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     /**
      * CRUD Handlers
      */
+    /**
+    // Alternative to Spec API for crud handling
     // const upsertIntegration = new LambdaIntegration(lambdaUpsertHandler);
     // const getIntegration = new LambdaIntegration(lambdaGetHandler);
     // const deleteIntegration = new LambdaIntegration(lambdaDeleteHandler);
     // const putIntegration = new LambdaIntegration(lambdaPutHandler);
+     */
     const crudHandlers = {
       'get': lambdaGetHandler,
       'put': lambdaPutHandler,
@@ -185,10 +184,23 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     const xsdMetadataIntegration = new LambdaIntegration(lambdaXsdMetadataHandler);
 
     /**
+     * ApiGateway Execution Role
+     */
+    // Create IAM role for API Gateway
+    const apiGatewayRole = new iam.Role(this, 'ApiGatewayRole', {
+      assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
+    });
+
+    // Grant necessary permissions
+    for (const handler of Object.values(crudHandlers)) {
+      handler.grantInvoke(apiGatewayRole);
+    }
+
+    /**
      * API Gateway Services
      */
-    const resourcesSpec = addLambdaCrudHandlers(JSON.parse(props.resourcesSwaggerDefinition), crudHandlers)
-    const descriptorsSpec = addLambdaCrudHandlers(JSON.parse(props.descriptorsSwaggerDefinition), crudHandlers)
+    const resourcesSpec = addLambdaCrudHandlers(JSON.parse(props.resourcesSwaggerDefinition), crudHandlers, apiGatewayRole)
+    const descriptorsSpec = addLambdaCrudHandlers(JSON.parse(props.descriptorsSwaggerDefinition), crudHandlers, apiGatewayRole)
 
     const meadowlarkResourcesApi = new SpecRestApi(this, 'MeadowlarkApi_Resources', {
       apiDefinition: ApiDefinition.fromInline(resourcesSpec)
@@ -201,14 +213,75 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     const meadowlarkSupportingApi = new RestApi(this, 'MeadowlarkApi_Supporting', {
       restApiName: 'MeadowlarkSupportingApi'
     });
+
+    const rootResource = meadowlarkSupportingApi.root;
+
+    /**
+    // Alternative to Spec API for crud handling
+    // meadowlarkSupportingApi.root.addMethod('GET', getIntegration);
+    // meadowlarkSupportingApi.root.addMethod('POST', upsertIntegration);
+    // meadowlarkSupportingApi.root.addMethod('PUT', putIntegration);
+    // meadowlarkSupportingApi.root.addMethod('DELETE', deleteIntegration);
+     */
+
+    rootResource.addResource('metaed').addMethod('GET', metaedIntegration);
+
+    rootResource.addMethod('GET', apiVersionIntegration);
+    const metadataResource = rootResource.addResource('metadata');
+    metadataResource.addMethod('GET', openApiUrlListIntegration);
+    metadataResource.addResource('resources').addResource('swagger.json').addMethod('GET', swaggerForResourcesAPIIntegration);
+    metadataResource.addResource('descriptors').addResource('swagger.json').addMethod('GET', swaggerForDescriptorsAPIIntegration);
+    metadataResource.addResource('data').addResource('v3').addResource('dependencies').addMethod('GET', dependenciesIntegration);
+    metadataResource.addResource('xsd').addMethod('GET', xsdMetadataIntegration);
+
+    rootResource.addResource('loadDescriptors').addMethod('GET', loadDescriptorsIntegration);
+
+    const oauthResource = rootResource.addResource('oauth');
+    oauthResource.addResource('clients').addMethod('GET', getClientsIntegration);
+    oauthResource.addResource('clients').addResource('{clientId}').addMethod('GET', getClientByIdIntegration);
+    oauthResource.addResource('clients').addResource('{clientId}').addResource('reset').addMethod('POST', resetAuthorizationClientSecretIntegration);
+    oauthResource.addResource('clients').addMethod('POST', createAuthorizationClientIntegration);
+    oauthResource.addResource('clients').addMethod('PUT', updateAuthorizationClientIntegration);
+    oauthResource.addResource('token').addMethod('POST', requestTokenAuthorizationIntegration);
+    oauthResource.addResource('verify').addMethod('POST', verifyTokenAuthorizationIntegration);
+    oauthResource.addResource('createSigningKey').addMethod('GET', createSigningKeyIntegration);
+
+    // Assume the rate limit is in requests per second
+    const rateLimit = Config.get<number>('FASTIFY_RATE_LIMIT');
+
+    // Define a deployment of the API
+    const deployment = new Deployment(this, 'MeadowlarkDeployment', {
+      api: meadowlarkSupportingApi,
+    });
+
+    // Define stage properties
+    const stage: string = Config.get('MEADOWLARK_STAGE');
+    let stageProps: StageProps = {
+      deployment: deployment,
+      stageName: stage
+    };
+
+    if (rateLimit > 0) {
+      // Add rate limiter, taking the defaults. Note this uses an in-memory store by default, better multi-server
+      // effectiveness requires configuring for redis or an alternative store
+      stageProps = {
+        ...stageProps,
+        throttlingRateLimit: rateLimit, // Requests per second
+        throttlingBurstLimit: 2 * rateLimit // Maximum concurrent requests
+      }
+    }
+
+    // Define & Assoc a stage that points to the deployment with the specified properties
+    meadowlarkSupportingApi.deploymentStage = new Stage(this, 'MeadowlarkApiStage', stageProps);
   }
 }
 
-function addLambdaCrudHandlers(spec: any, crudHandlers: { [method: string]: NodejsFunction }) {
+function addLambdaCrudHandlers(spec: any, crudHandlers: { [method: string]: NodejsFunction }, apiGatewayRole: iam.Role) {
   for (const path in spec.paths) {
     for (const method in spec.paths[path]) {
       if (crudHandlers[method.toLowerCase()]) {
         spec.paths[path][method]['x-amazon-apigateway-integration'] = {
+          'credentials': apiGatewayRole.roleArn,
           'uri': {
             'Fn::Sub': `arn:aws:apigateway:${cdk.Aws.REGION}:lambda:path/2015-03-31/functions/${crudHandlers[method.toLowerCase()].functionArn}/invocations`
           },

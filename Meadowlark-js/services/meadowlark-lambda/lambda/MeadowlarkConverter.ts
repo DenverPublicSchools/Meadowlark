@@ -34,7 +34,10 @@ export function respondWith(frontendResponse: FrontendResponse): APIGatewayProxy
   return {
     statusCode: frontendResponse.statusCode,
     body: body,
-    headers: headers,
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+    },
     isBase64Encoded: false
   };
 }  

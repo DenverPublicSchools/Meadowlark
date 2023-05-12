@@ -3,17 +3,25 @@ import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { MeadowlarkLambdaStack } from '../lib/meadowlark-lambda-stack';
 import { swaggerForResourcesAPI, swaggerForDescriptorsAPI, FrontendRequest, newFrontendRequest } from '@edfi/meadowlark-core';
-
-const mockRequest: FrontendRequest = {
-  ...newFrontendRequest(),
-}
+import { Config } from '@edfi/meadowlark-utilities';
+import dotenv from 'dotenv';
+import { cloneDeep, omit } from 'lodash';
 
 async function main() {
+  const originalEnv = cloneDeep(process.env);
+  dotenv.config();
+  const dotenvVars: NodeJS.ProcessEnv = omit(process.env, Object.keys(originalEnv));
+
+  const mockRequest: FrontendRequest = {
+    ...newFrontendRequest(),
+    stage: process.env['MEADOWLARK_STAGE'] || ''
+  }
 
   const app = new cdk.App();
   new MeadowlarkLambdaStack(app, 'MeadowlarkLambdaStack', {
     resourcesSwaggerDefinition: (await swaggerForResourcesAPI(mockRequest)).body as string,
-    descriptorsSwaggerDefinition: (await swaggerForDescriptorsAPI(mockRequest)).body as string
+    descriptorsSwaggerDefinition: (await swaggerForDescriptorsAPI(mockRequest)).body as string,
+    dotenvVars
     /* If you don't specify 'env', this stack will be environment-agnostic.
      * Account/Region-dependent features and context lookups will not work,
      * but a single synthesized template can be deployed anywhere. */

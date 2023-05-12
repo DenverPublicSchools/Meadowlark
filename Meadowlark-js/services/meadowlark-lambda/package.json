@@ -5,10 +5,7 @@
     "meadowlark-lambda": "bin/meadowlark-lambda.js"
   },
   "scripts": {
-    "build": "tsc",
-    "watch": "tsc -w",
-    "test": "jest",
-    "cdk": "cdk"
+    "build": "tsc && cdk synth -q"
   },
   "devDependencies": {
     "@types/jest": "^29.4.0",
@@ -32,7 +29,9 @@
     "source-map-support": "^0.5.21",
     "@types/aws-lambda": "^8.10.115",
     "@types/lodash": "4.14.194",
+    "@types/jest": "29.5.1",
     "@types/node": "*",
-    "@types/uuid": "*"
+    "@types/uuid": "*",
+    "esbuild": "*"
   }
 }
