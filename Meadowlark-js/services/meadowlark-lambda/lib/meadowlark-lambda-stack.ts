@@ -219,14 +219,15 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
 
     /**
     // Alternative to Spec API for crud handling*/
-    meadowlarkSupportingApi.root.addMethod('GET', getIntegration);
-    meadowlarkSupportingApi.root.addMethod('POST', upsertIntegration);
-    meadowlarkSupportingApi.root.addMethod('PUT', putIntegration);
-    meadowlarkSupportingApi.root.addMethod('DELETE', deleteIntegration);
+    const apiRoot = rootResource.addResource('{api+}')
+    apiRoot.addMethod('GET', getIntegration);
+    apiRoot.addMethod('POST', upsertIntegration);
+    apiRoot.addMethod('PUT', putIntegration);
+    apiRoot.addMethod('DELETE', deleteIntegration);
+    rootResource.addMethod('GET', apiVersionIntegration);
 
     rootResource.addResource('metaed').addMethod('GET', metaedIntegration);
 
-    rootResource.addMethod('GET', apiVersionIntegration);
     const metadataResource = rootResource.addResource('metadata');
     metadataResource.addMethod('GET', openApiUrlListIntegration);
     metadataResource.addResource('resources').addResource('swagger.json').addMethod('GET', swaggerForResourcesAPIIntegration);
@@ -238,8 +239,8 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
 
     const oauthResource = rootResource.addResource('oauth');
     const clientsResource = oauthResource.addResource('clients');
-    clientsResource.addMethod('GET', getClientsIntegration);
     const cliendIdResource = clientsResource.addResource('{clientId}')
+    clientsResource.addMethod('GET', getClientsIntegration);
     cliendIdResource.addMethod('GET', getClientByIdIntegration);
     cliendIdResource.addResource('reset').addMethod('POST', resetAuthorizationClientSecretIntegration);
     clientsResource.addMethod('POST', createAuthorizationClientIntegration);
