@@ -147,12 +147,12 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
      * CRUD Handlers
      */
     /**
-    // Alternative to Spec API for crud handling
-    // const upsertIntegration = new LambdaIntegration(lambdaUpsertHandler);
-    // const getIntegration = new LambdaIntegration(lambdaGetHandler);
-    // const deleteIntegration = new LambdaIntegration(lambdaDeleteHandler);
-    // const putIntegration = new LambdaIntegration(lambdaPutHandler);
-     */
+    // Alternative to Spec API for crud handling*/
+    const upsertIntegration = new LambdaIntegration(lambdaUpsertHandler);
+    const getIntegration = new LambdaIntegration(lambdaGetHandler);
+    const deleteIntegration = new LambdaIntegration(lambdaDeleteHandler);
+    const putIntegration = new LambdaIntegration(lambdaPutHandler);
+    
     const crudHandlers = {
       'get': lambdaGetHandler,
       'put': lambdaPutHandler,
@@ -200,16 +200,16 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     /**
      * API Gateway Services
      */
-    const resourcesSpec = addLambdaCrudHandlers(rOmit(rOmit(JSON.parse(props.resourcesSwaggerDefinition), 'description'), 'summary'), crudHandlers, apiGatewayRole)
-    const descriptorsSpec = addLambdaCrudHandlers(rOmit(rOmit(JSON.parse(props.descriptorsSwaggerDefinition), 'description'), 'summary'), crudHandlers, apiGatewayRole)
+    // const resourcesSpec = addLambdaCrudHandlers(rOmit(rOmit(JSON.parse(props.resourcesSwaggerDefinition), 'description'), 'summary'), crudHandlers, apiGatewayRole)
+    // const descriptorsSpec = addLambdaCrudHandlers(rOmit(rOmit(JSON.parse(props.descriptorsSwaggerDefinition), 'description'), 'summary'), crudHandlers, apiGatewayRole)
     
-    const meadowlarkResourcesApi = new SpecRestApi(this, 'MeadowlarkApi_Resources', {
-      apiDefinition: ApiDefinition.fromInline(resourcesSpec)
-    });
+    // const meadowlarkResourcesApi = new SpecRestApi(this, 'MeadowlarkApi_Resources', {
+    //   apiDefinition: ApiDefinition.fromInline(resourcesSpec)
+    // });
 
-    const meadowlarkDescriptorsApi = new SpecRestApi(this, 'MeadowlarkApi_Descriptors', {
-      apiDefinition: ApiDefinition.fromInline(descriptorsSpec)
-    });
+    // const meadowlarkDescriptorsApi = new SpecRestApi(this, 'MeadowlarkApi_Descriptors', {
+    //   apiDefinition: ApiDefinition.fromInline(descriptorsSpec)
+    // });
 
     const meadowlarkSupportingApi = new RestApi(this, 'MeadowlarkApi_Supporting', {
       restApiName: 'MeadowlarkSupportingApi'
@@ -218,12 +218,11 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     const rootResource = meadowlarkSupportingApi.root;
 
     /**
-    // Alternative to Spec API for crud handling
-    // meadowlarkSupportingApi.root.addMethod('GET', getIntegration);
-    // meadowlarkSupportingApi.root.addMethod('POST', upsertIntegration);
-    // meadowlarkSupportingApi.root.addMethod('PUT', putIntegration);
-    // meadowlarkSupportingApi.root.addMethod('DELETE', deleteIntegration);
-     */
+    // Alternative to Spec API for crud handling*/
+    meadowlarkSupportingApi.root.addMethod('GET', getIntegration);
+    meadowlarkSupportingApi.root.addMethod('POST', upsertIntegration);
+    meadowlarkSupportingApi.root.addMethod('PUT', putIntegration);
+    meadowlarkSupportingApi.root.addMethod('DELETE', deleteIntegration);
 
     rootResource.addResource('metaed').addMethod('GET', metaedIntegration);
 
