@@ -6,6 +6,7 @@ import { join } from 'path';
 import { RestApi, IResource, LambdaIntegration, MockIntegration, PassthroughBehavior, SpecRestApi, ApiDefinition, Deployment, StageProps, Stage } from 'aws-cdk-lib/aws-apigateway';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Config } from '@edfi/meadowlark-utilities';
+import { writeFile } from 'fs';
 
 const LAMBDAS = join(__dirname, '..', 'lambda');
 
@@ -201,7 +202,7 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
      */
     const resourcesSpec = addLambdaCrudHandlers(JSON.parse(props.resourcesSwaggerDefinition), crudHandlers, apiGatewayRole)
     const descriptorsSpec = addLambdaCrudHandlers(JSON.parse(props.descriptorsSwaggerDefinition), crudHandlers, apiGatewayRole)
-
+    
     const meadowlarkResourcesApi = new SpecRestApi(this, 'MeadowlarkApi_Resources', {
       apiDefinition: ApiDefinition.fromInline(resourcesSpec)
     });
@@ -237,11 +238,13 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     rootResource.addResource('loadDescriptors').addMethod('GET', loadDescriptorsIntegration);
 
     const oauthResource = rootResource.addResource('oauth');
-    oauthResource.addResource('clients').addMethod('GET', getClientsIntegration);
-    oauthResource.addResource('clients').addResource('{clientId}').addMethod('GET', getClientByIdIntegration);
-    oauthResource.addResource('clients').addResource('{clientId}').addResource('reset').addMethod('POST', resetAuthorizationClientSecretIntegration);
-    oauthResource.addResource('clients').addMethod('POST', createAuthorizationClientIntegration);
-    oauthResource.addResource('clients').addMethod('PUT', updateAuthorizationClientIntegration);
+    const clientsResource = oauthResource.addResource('clients');
+    clientsResource.addMethod('GET', getClientsIntegration);
+    const cliendIdResource = clientsResource.addResource('{clientId}')
+    cliendIdResource.addMethod('GET', getClientByIdIntegration);
+    cliendIdResource.addResource('reset').addMethod('POST', resetAuthorizationClientSecretIntegration);
+    clientsResource.addMethod('POST', createAuthorizationClientIntegration);
+    clientsResource.addMethod('PUT', updateAuthorizationClientIntegration);
     oauthResource.addResource('token').addMethod('POST', requestTokenAuthorizationIntegration);
     oauthResource.addResource('verify').addMethod('POST', verifyTokenAuthorizationIntegration);
     oauthResource.addResource('createSigningKey').addMethod('GET', createSigningKeyIntegration);
@@ -276,7 +279,7 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
   }
 }
 
-function addLambdaCrudHandlers(spec: any, crudHandlers: { [method: string]: NodejsFunction }, apiGatewayRole: iam.Role) {
+function addLambdaCrudHandlers(spec: any, crudHandlers: { [method: string]: NodejsFunction }, apiGatewayRole: iam.Role): object {
   for (const path in spec.paths) {
     for (const method in spec.paths[path]) {
       if (crudHandlers[method.toLowerCase()]) {
@@ -296,6 +299,8 @@ function addLambdaCrudHandlers(spec: any, crudHandlers: { [method: string]: Node
       }
     }
   }
+
+  return spec;
 }
 
 function addCorsOptions(apiResource: IResource) {

@@ -3,7 +3,7 @@ import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { MeadowlarkLambdaStack } from '../lib/meadowlark-lambda-stack';
 import { swaggerForResourcesAPI, swaggerForDescriptorsAPI, FrontendRequest, newFrontendRequest } from '@edfi/meadowlark-core';
-import { Config } from '@edfi/meadowlark-utilities';
+import { Config, CachedEnvironmentConfigProvider, initializeLogging } from '@edfi/meadowlark-utilities';
 import dotenv from 'dotenv';
 import { cloneDeep, omit } from 'lodash';
 
@@ -11,6 +11,8 @@ async function main() {
   const originalEnv = cloneDeep(process.env);
   dotenv.config();
   const dotenvVars: NodeJS.ProcessEnv = omit(process.env, Object.keys(originalEnv));
+  await Config.initializeConfig(CachedEnvironmentConfigProvider);
+  initializeLogging();
 
   const mockRequest: FrontendRequest = {
     ...newFrontendRequest(),
@@ -18,9 +20,13 @@ async function main() {
   }
 
   const app = new cdk.App();
+
+  const resSpec = (await swaggerForResourcesAPI(mockRequest)).body;
+  const descSpec = (await swaggerForDescriptorsAPI(mockRequest)).body;
+
   new MeadowlarkLambdaStack(app, 'MeadowlarkLambdaStack', {
-    resourcesSwaggerDefinition: (await swaggerForResourcesAPI(mockRequest)).body as string,
-    descriptorsSwaggerDefinition: (await swaggerForDescriptorsAPI(mockRequest)).body as string,
+    resourcesSwaggerDefinition: resSpec as string,
+    descriptorsSwaggerDefinition: descSpec as string,
     dotenvVars
     /* If you don't specify 'env', this stack will be environment-agnostic.
      * Account/Region-dependent features and context lookups will not work,
