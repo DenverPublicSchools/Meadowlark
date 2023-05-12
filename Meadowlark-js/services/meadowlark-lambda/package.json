@@ -5,7 +5,8 @@
     "meadowlark-lambda": "bin/meadowlark-lambda.js"
   },
   "scripts": {
-    "build": "tsc && cdk synth -q"
+    "build": "tsc && cdk synth -q",
+    "cdk:deploy": "npm run build && cdk deploy"
   },
   "devDependencies": {
     "@types/jest": "^29.4.0",
