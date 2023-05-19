@@ -48,7 +48,8 @@ export type ConfigKeys =
   | 'HTTP_PROTOCOL_AND_SERVER'
   | 'DISABLE_LOG_ANONYMIZATION'
   | 'MONGODB_MAX_NUMBER_OF_RETRIES'
-  | 'AWS_REGION';
+  | 'AWS_REGION'
+  | 'AWS_VPC_NAME';
 
 const ThrowIfNotFound = undefined;
 const CpuCount = os.cpus().length;

@@ -3,10 +3,12 @@ import { Construct } from 'constructs';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction, NodejsFunctionProps } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { join } from 'path';
-import { RestApi, IResource, LambdaIntegration, MockIntegration, PassthroughBehavior, SpecRestApi, ApiDefinition, Deployment, StageProps, Stage } from 'aws-cdk-lib/aws-apigateway';
+import { RestApi, IResource, LambdaIntegration, MockIntegration, PassthroughBehavior, SpecRestApi, ApiDefinition, Deployment, StageProps, Stage, EndpointType } from 'aws-cdk-lib/aws-apigateway';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Config } from '@edfi/meadowlark-utilities';
 import { isObject, transform } from 'lodash';
+import { Vpc, GatewayVpcEndpointAwsService, InterfaceVpcEndpointAwsService, SecurityGroup, SubnetType, Peer, Port, Subnet } from 'aws-cdk-lib/aws-ec2';
+import { env } from 'process';
 
 const LAMBDAS = join(__dirname, '..', 'lambda');
 
@@ -19,6 +21,63 @@ interface MeadowlarkStackProps extends cdk.StackProps {
 export class MeadowlarkLambdaStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: MeadowlarkStackProps) {
     super(scope, id, props);
+    const vpc = Vpc.fromLookup(this, 'VPC', { vpcName: props.dotenvVars['AWS_VPC_NAME'] });
+    const subnetAz1 = Subnet.fromSubnetId(this, 'subnet_az1', props.dotenvVars["AWS_VPC_SUBNET_AZ1"] as string);
+    const subnetAz2 = Subnet.fromSubnetId(this, 'subnet_az2', props.dotenvVars["AWS_VPC_SUBNET_AZ2"] as string);
+
+    const lambdaSecurityGroup = new SecurityGroup(this, 'LambdaSecurityGroup', {
+      vpc: vpc,
+      description: 'Default security group for Meadowlark Lambda functions, allows all outbound traffic.',
+      allowAllOutbound: true,
+    });
+
+    const interfaceSecurityGroup = new SecurityGroup(this, 'InterfaceSecurityGroup', {
+      vpc: vpc,
+      description: 'Default security group for Meadowlark VPC Interface, allows all outbound traffic.',
+      allowAllOutbound: true,
+    });
+
+    const apiGatewayEndpoint = vpc.addInterfaceEndpoint('ApiGatewayEndpoint', {
+      service: InterfaceVpcEndpointAwsService.APIGATEWAY,
+      subnets: {
+        subnets: [subnetAz1, subnetAz2]
+      },
+      privateDnsEnabled: false,
+      securityGroups: [interfaceSecurityGroup],
+    });
+
+    const apiGatewayPolicyDocument = new iam.PolicyDocument({
+      statements: [
+        // new iam.PolicyStatement({
+        //   principals: [new iam.AnyPrincipal],
+        //   actions: ['execute-api:Invoke'],
+        //   resources: ['execute-api:/*'],
+        //   effect: iam.Effect.DENY,
+        //   conditions: {
+        //     StringNotEquals: {
+        //       "aws:SourceVpce": apiGatewayEndpoint.vpcEndpointId
+        //     }
+        //   }
+        // }),
+        new iam.PolicyStatement({
+          effect: iam.Effect.DENY,
+          principals: [new iam.AnyPrincipal()],
+          actions: ["execute-api:Invoke"],
+          resources: ["execute-api:/*/*/*"],
+          conditions: {
+            NotIpAddress: {
+              "aws:SourceIp": [""]
+            }
+          }
+        }),
+        new iam.PolicyStatement({
+          principals: [new iam.AnyPrincipal],
+          actions: ['execute-api:Invoke'],
+          resources: ['execute-api:/*'],
+          effect: iam.Effect.ALLOW
+        })
+      ]
+    });
 
     const nodeJsFunctionProps: NodejsFunctionProps = {
       bundling: {
@@ -31,7 +90,10 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
         // Add defaults here
         ...props.dotenvVars as unknown as { [key: string]: string } // Weird hack
       },
-      runtime: Runtime.NODEJS_16_X
+      runtime: Runtime.NODEJS_16_X,
+      vpc: vpc,
+      vpcSubnets: { subnetType: SubnetType.PRIVATE_ISOLATED },
+      securityGroups: [lambdaSecurityGroup]
     }
 
     /**
@@ -152,7 +214,7 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     const getIntegration = new LambdaIntegration(lambdaGetHandler);
     const deleteIntegration = new LambdaIntegration(lambdaDeleteHandler);
     const putIntegration = new LambdaIntegration(lambdaPutHandler);
-    
+
     const crudHandlers = {
       'get': lambdaGetHandler,
       'put': lambdaPutHandler,
@@ -202,7 +264,7 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
      */
     // const resourcesSpec = addLambdaCrudHandlers(rOmit(rOmit(JSON.parse(props.resourcesSwaggerDefinition), 'description'), 'summary'), crudHandlers, apiGatewayRole)
     // const descriptorsSpec = addLambdaCrudHandlers(rOmit(rOmit(JSON.parse(props.descriptorsSwaggerDefinition), 'description'), 'summary'), crudHandlers, apiGatewayRole)
-    
+
     // const meadowlarkResourcesApi = new SpecRestApi(this, 'MeadowlarkApi_Resources', {
     //   apiDefinition: ApiDefinition.fromInline(resourcesSpec)
     // });
@@ -212,7 +274,10 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     // });
 
     const meadowlarkSupportingApi = new RestApi(this, 'MeadowlarkApi_Supporting', {
-      restApiName: 'MeadowlarkSupportingApi'
+      restApiName: 'MeadowlarkSupportingApi',
+      deploy: false,
+      // endpointTypes: [EndpointType.PRIVATE],
+      policy: apiGatewayPolicyDocument,
     });
 
     const rootResource = meadowlarkSupportingApi.root;
