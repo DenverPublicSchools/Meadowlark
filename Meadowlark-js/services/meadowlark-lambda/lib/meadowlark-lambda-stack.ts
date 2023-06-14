@@ -1,6 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { Runtime } from 'aws-cdk-lib/aws-lambda';
+import { Runtime, LayerVersion, Code, Architecture } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction, NodejsFunctionProps } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { join } from 'path';
 import { RestApi, IResource, LambdaIntegration, MockIntegration, PassthroughBehavior, SpecRestApi, ApiDefinition, Deployment, StageProps, Stage, EndpointType } from 'aws-cdk-lib/aws-apigateway';
@@ -9,6 +9,7 @@ import { Config } from '@edfi/meadowlark-utilities';
 import { isObject, transform } from 'lodash';
 import { Vpc, GatewayVpcEndpointAwsService, InterfaceVpcEndpointAwsService, SecurityGroup, SubnetType, Peer, Port, Subnet } from 'aws-cdk-lib/aws-ec2';
 import { env } from 'process';
+import { Duration } from 'aws-cdk-lib';
 
 const LAMBDAS = join(__dirname, '..', 'lambda');
 
@@ -66,7 +67,7 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
           resources: ["execute-api:/*/*/*"],
           conditions: {
             NotIpAddress: {
-              "aws:SourceIp": [""]
+              "aws:SourceIp": ["164.92.0.0/18"]
             }
           }
         }),
@@ -79,12 +80,45 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
       ]
     });
 
+
+    /**
+     * Api Gateway providing supporting apis for authentication/etc
+     */
+    const meadowlarkSupportingApi = new RestApi(this, 'MeadowlarkApi_Supporting', {
+      restApiName: 'MeadowlarkSupportingApi',
+      deploy: false,
+      // endpointTypes: [EndpointType.PRIVATE],
+      policy: apiGatewayPolicyDocument,
+    });
+
+    const envVars = props.dotenvVars;
+    const prevGatewayUrl = "https://9dkid3abbe.execute-api.us-west-2.amazonaws.com"; // This has been hardcoded because we can't create the lambda functions without the info that is needed to generate the info, therefore we have to create the whole stack and then update it with the corrected env vars.
+    envVars["OAUTH_SERVER_ENDPOINT_FOR_OWN_TOKEN_REQUEST"] = `${prevGatewayUrl}/${Config.get('MEADOWLARK_STAGE')}/oauth/token`;
+    envVars["OAUTH_SERVER_ENDPOINT_FOR_TOKEN_VERIFICATION"] = `${prevGatewayUrl}/${Config.get('MEADOWLARK_STAGE')}/oauth/verify`;
+
+    const meadowlarkBackendLayer = new LayerVersion(this, 'MeadowlarkBackendsLayer', {
+      layerVersionName: 'meadowlark-backend-plugins',
+      compatibleRuntimes: [
+        Runtime.NODEJS_16_X
+      ],
+      code: Code.fromAsset('./dist/layer'),
+    });
+
     const nodeJsFunctionProps: NodejsFunctionProps = {
       bundling: {
+        sourceMap: true,
         externalModules: [
           'aws-sdk',
-        ]
+          '@edfi/meadowlark-postgresql-backend',
+          '@edfi/meadowlark-opensearch-backend',
+          // '@edfi/meadowlark-core',
+          // TODO: declare rest of meadowlark modules as external, and manually build them in package.json
+        ],
+        // loader: {
+        //   '.json': 'file'
+        // }
       },
+      layers: [meadowlarkBackendLayer],
       depsLockFilePath: join(LAMBDAS, '../../..', 'package-lock.json'),
       environment: {
         // Add defaults here
@@ -93,7 +127,8 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
       runtime: Runtime.NODEJS_16_X,
       vpc: vpc,
       vpcSubnets: { subnetType: SubnetType.PRIVATE_ISOLATED },
-      securityGroups: [lambdaSecurityGroup]
+      securityGroups: [lambdaSecurityGroup],
+      timeout: Duration.minutes(5),
     }
 
     /**
@@ -272,13 +307,6 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     // const meadowlarkDescriptorsApi = new SpecRestApi(this, 'MeadowlarkApi_Descriptors', {
     //   apiDefinition: ApiDefinition.fromInline(descriptorsSpec)
     // });
-
-    const meadowlarkSupportingApi = new RestApi(this, 'MeadowlarkApi_Supporting', {
-      restApiName: 'MeadowlarkSupportingApi',
-      deploy: false,
-      // endpointTypes: [EndpointType.PRIVATE],
-      policy: apiGatewayPolicyDocument,
-    });
 
     const rootResource = meadowlarkSupportingApi.root;
 
