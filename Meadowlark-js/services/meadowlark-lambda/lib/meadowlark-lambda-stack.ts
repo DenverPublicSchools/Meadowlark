@@ -111,6 +111,7 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
           'aws-sdk',
           '@edfi/meadowlark-postgresql-backend',
           '@edfi/meadowlark-opensearch-backend',
+          '@edfi/metaed-core'
           // '@edfi/meadowlark-core',
           // TODO: declare rest of meadowlark modules as external, and manually build them in package.json
         ],

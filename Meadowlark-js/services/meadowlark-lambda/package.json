@@ -9,16 +9,7 @@
     "build:no-stage": "npm run build:base && cdk synth -q --no-staging",
     "build": "npm run build:base && cdk synth -q",
     "cdk:deploy": "npm run build && cdk deploy",
-    "build:deps": "npm run build:deps:postgres && npm run build:deps:opensearch && npm run build:deps:core && npm run build:deps:copyfiles",
-    "build:deps:postgres": "esbuild --bundle --platform=node --sourcemap ../../backends/meadowlark-postgresql-backend/index.ts --outfile=dist/layer/nodejs/node_modules/meadowlark-postgresql-backend.js --external:pg-native",
-    "build:deps:opensearch": "esbuild --bundle --platform=node --sourcemap ../../backends/meadowlark-opensearch-backend/index.ts --outfile=dist/layer/nodejs/node_modules/meadowlark-opensearch-backend.js",
-    "build:deps:core": "esbuild --bundle --platform=node --sourcemap ../../packages/meadowlark-core/index.ts --outfile=dist/layer/nodejs/node_modules/@edfi/meadowlark-core/index.js",
-    "build:deps:utilities": "esbuild --bundle --platform=node --sourcemap ../../packages/meadowlark-utilities/index.ts --outfile=dist/layer/nodejs/node_modules/@edfi/meadowlark-utilities/index.js",
-    "build:deps:authz": "esbuild --bundle --platform=node --sourcemap ../../packages/meadowlark-authz-server/index.ts --outfile=dist/layer/nodejs/node_modules/@edfi/meadowlark-authz-server/index.js",
-    "build:deps:copyfiles": "npm run build:deps:copyfiles:pg-fmt && npm run build:deps:copyfiles:meta-ed && npm run build:deps:copyfiles:coreindex",
-    "build:deps:copyfiles:pg-fmt": "copyfiles -f ../../node_modules/pg-format/lib/reserved.js \"dist/layer/nodejs/node_modules/\"",
-    "build:deps:copyfiles:meta-ed": "copyfiles -f ../../node_modules/@edfi/metaed-core/package.json \"dist/layer/\"",
-    "build:deps:copyfiles:coreindex": "copyfiles -f ./dist/node_modules/@edfi/meadowlark-core/index.js \"dist/node_modules/@edfi/meadowlark-core/dist/index.js\""
+    "build:deps": "node build.mjs"
   },
   "devDependencies": {
     "@types/jest": "^29.4.0",
@@ -35,7 +26,8 @@
     "dotenv": "^16.0.3",
     "lodash": "*",
     "uuid": "*",
-    "copyfiles": "2.4.1"
+    "copyfiles": "2.4.1",
+    "rimraf": "^5.0.1"
   },
   "dependencies": {
     "aws-cdk-lib": "2.76.0",
