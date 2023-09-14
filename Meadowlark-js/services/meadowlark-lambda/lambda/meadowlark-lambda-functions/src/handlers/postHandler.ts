@@ -8,7 +8,9 @@ import { bootstrap } from '../utilities/BootstrapMeadowlark';
 /**
  * Lambda Function for all API POST requests
  */
+let isBootstrapped: boolean = false;
+bootstrap().then((result: boolean) => isBootstrapped = result)
 export const handler: Handler = async (event: APIGatewayProxyEvent, context: Context): Promise<APIGatewayProxyResult> => {
-  await bootstrap();
+  isBootstrapped = !isBootstrapped ? await bootstrap() : isBootstrapped;
   return respondWith(await meadowlarkUpsert(fromRequest(event)));
 }

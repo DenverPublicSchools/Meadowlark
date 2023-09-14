@@ -4,9 +4,11 @@ import { fromRequest, respondWith } from '../../MeadowlarkConverter';
 import { bootstrap } from '../../utilities/BootstrapMeadowlark';
 
 /**
- * Endpoint for accessing Descriptors API swagger metadata
+ * xsdMetadata
  */
+let isBootstrapped: boolean = false;
+bootstrap().then((result: boolean) => isBootstrapped = result)
 export const handler: Handler = async (event: APIGatewayProxyEvent, context: Context): Promise<APIGatewayProxyResult> => {
-  await bootstrap();
-  return respondWith(await Meadowlark.swaggerForDescriptorsAPI(fromRequest(event)));
+  isBootstrapped = !isBootstrapped ? await bootstrap() : isBootstrapped;
+  return respondWith(await Meadowlark.xsdMetadata(fromRequest(event)));
 }

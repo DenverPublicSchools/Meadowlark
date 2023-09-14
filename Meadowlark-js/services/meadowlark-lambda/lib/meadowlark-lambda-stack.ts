@@ -1,15 +1,17 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { Runtime, LayerVersion, Code, Architecture } from 'aws-cdk-lib/aws-lambda';
+import { Runtime, LayerVersion, Code, Architecture, Function, FunctionProps, Version, Alias } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction, NodejsFunctionProps } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { join } from 'path';
 import { RestApi, IResource, LambdaIntegration, MockIntegration, PassthroughBehavior, SpecRestApi, ApiDefinition, Deployment, StageProps, Stage, EndpointType } from 'aws-cdk-lib/aws-apigateway';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Config } from '@edfi/meadowlark-utilities';
-import { isObject, transform } from 'lodash';
+import { isObject, transform, uniqueId } from 'lodash';
 import { Vpc, GatewayVpcEndpointAwsService, InterfaceVpcEndpointAwsService, SecurityGroup, SubnetType, Peer, Port, Subnet } from 'aws-cdk-lib/aws-ec2';
 import { env } from 'process';
 import { Duration } from 'aws-cdk-lib';
+import { PredefinedMetric, ScalableTarget, ServiceNamespace } from 'aws-cdk-lib/aws-applicationautoscaling';
+import { AutoscaleProvisionedConcurrentLambda, MetricType } from './construct/autoscale-provisioned-concurrent-lambda'
 
 const LAMBDAS = join(__dirname, '..', 'lambda');
 
@@ -96,31 +98,8 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     envVars["OAUTH_SERVER_ENDPOINT_FOR_OWN_TOKEN_REQUEST"] = `${prevGatewayUrl}/${Config.get('MEADOWLARK_STAGE')}/oauth/token`;
     envVars["OAUTH_SERVER_ENDPOINT_FOR_TOKEN_VERIFICATION"] = `${prevGatewayUrl}/${Config.get('MEADOWLARK_STAGE')}/oauth/verify`;
 
-    const meadowlarkBackendLayer = new LayerVersion(this, 'MeadowlarkBackendsLayer', {
-      layerVersionName: 'meadowlark-backend-plugins',
-      compatibleRuntimes: [
-        Runtime.NODEJS_16_X
-      ],
-      code: Code.fromAsset('./dist/layer'),
-    });
-
-    const nodeJsFunctionProps: NodejsFunctionProps = {
-      bundling: {
-        sourceMap: true,
-        externalModules: [
-          'aws-sdk',
-          '@edfi/meadowlark-postgresql-backend',
-          '@edfi/meadowlark-opensearch-backend',
-          '@edfi/metaed-core'
-          // '@edfi/meadowlark-core',
-          // TODO: declare rest of meadowlark modules as external, and manually build them in package.json
-        ],
-        // loader: {
-        //   '.json': 'file'
-        // }
-      },
-      layers: [meadowlarkBackendLayer],
-      depsLockFilePath: join(LAMBDAS, '../../..', 'package-lock.json'),
+    const functionProps: Partial<FunctionProps> = {
+      code: Code.fromAsset(join(__dirname, '../lambda/meadowlark-lambda-functions/meadowlark-lambda-functions.zip')),
       environment: {
         // Add defaults here
         ...props.dotenvVars as unknown as { [key: string]: string } // Weird hack
@@ -135,110 +114,118 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     /**
      * CRUD Handlers
      */
-    const lambdaUpsertHandler = new NodejsFunction(this, 'meadowlarkUpsertHandler', {
-      entry: join(LAMBDAS, 'handlers', 'postHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaUpsertHandler = new Function(this, 'meadowlarkUpsertHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.postHandler',
     });
 
-    const lambdaGetHandler = new NodejsFunction(this, 'meadowlarkGetHandler', {
-      entry: join(LAMBDAS, 'handlers', 'getHandler.ts'),
-      ...nodeJsFunctionProps
-    })
-
-    const lambdaDeleteHandler = new NodejsFunction(this, 'meadowlarkDeleteHandler', {
-      entry: join(LAMBDAS, 'handlers', 'deleteHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaGetHandler = new Function(this, 'meadowlarkGetHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.getHandler',
     });
 
-    const lambdaPutHandler = new NodejsFunction(this, 'meadowlarkPutHandler', {
-      entry: join(LAMBDAS, 'handlers', 'putHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaDeleteHandler = new Function(this, 'meadowlarkDeleteHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.deleteHandler',
+    });
+
+    const lambdaPutHandler = new Function(this, 'meadowlarkPutHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.putHandler',
     });
 
     /**
      * Authorization Handlers
      */
-    const lambdaCreateAuthorizationClientHandler = new NodejsFunction(this, 'meadowlarkCreateAuthorizationClientHandler', {
-      entry: join(LAMBDAS, 'handlers', 'authorization', 'createAuthorizationClientHandler.ts'),
-      ...nodeJsFunctionProps
-    })
-
-    const lambdaUpdateAuthorizationClientHandler = new NodejsFunction(this, 'meadowlarkUpdateAuthorizationClientHandler', {
-      entry: join(LAMBDAS, 'handlers', 'authorization', 'updateAuthorizationClientHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaCreateAuthorizationClientHandler = new Function(this, 'meadowlarkCreateAuthorizationClientHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.createAuthorizationClientHandler',
     });
 
-    const lambdaRequestTokenAuthorizationHandler = new NodejsFunction(this, 'meadowlarkRequestTokenAuthorizationHandler', {
-      entry: join(LAMBDAS, 'handlers', 'authorization', 'requestTokenAuthorizationHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaUpdateAuthorizationClientHandler = new Function(this, 'meadowlarkUpdateAuthorizationClientHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.updateAuthorizationClientHandler',
     });
 
-    const lambdaVerifyTokenAuthorizationHandler = new NodejsFunction(this, 'meadowlarkVerifyTokenAuthorizationHandler', {
-      entry: join(LAMBDAS, 'handlers', 'authorization', 'verifyTokenAuthorizationHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaRequestTokenAuthorizationHandler = new Function(this, 'meadowlarkRequestTokenAuthorizationHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.requestTokenAuthorizationHandler',
     });
 
-    const lambdaResetAuthorizationClientSecretHandler = new NodejsFunction(this, 'meadowlarkResetAuthorizationClientSecretHandler', {
-      entry: join(LAMBDAS, 'handlers', 'authorization', 'resetAuthorizationClientSecretHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaVerifyTokenAuthorizationHandler = new Function(this, 'meadowlarkVerifyTokenAuthorizationHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.verifyTokenAuthorizationHandler',
     });
 
-    const lambdaCreateSigningKeyHandler = new NodejsFunction(this, 'meadowlarkCreateSigningKeyHandler', {
-      entry: join(LAMBDAS, 'handlers', 'authorization', 'createSigningKeyHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaResetAuthorizationClientSecretHandler = new Function(this, 'meadowlarkResetAuthorizationClientSecretHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.resetAuthorizationClientSecretHandler',
     });
 
-    const lambdaGetClientByIdHandler = new NodejsFunction(this, 'meadowlarkGetClientByIdHandler', {
-      entry: join(LAMBDAS, 'handlers', 'authorization', 'getClientByIdHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaCreateSigningKeyHandler = new Function(this, 'meadowlarkCreateSigningKeyHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.createSigningKeyHandler',
     });
 
-    const lambdaGetClientsHandler = new NodejsFunction(this, 'meadowlarkGetClientsHandler', {
-      entry: join(LAMBDAS, 'handlers', 'authorization', 'getClientsHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaGetClientByIdHandler = new Function(this, 'meadowlarkGetClientByIdHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.getClientByIdHandler',
+    });
+
+    const lambdaGetClientsHandler = new Function(this, 'meadowlarkGetClientsHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.getClientsHandler',
     });
 
     /**
      * Metadata and Other Functions
      */
-    const loadDescriptorsHandler = new NodejsFunction(this, 'meadowlarkLoadDescriptorsHandler', {
-      entry: join(LAMBDAS, 'handlers', 'descriptorLoaderHandler.ts'),
-      ...nodeJsFunctionProps
+    const loadDescriptorsHandler = new Function(this, 'meadowlarkLoadDescriptorsHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.descriptorLoaderHandler',
     })
 
-    const lambdaMetaedHandler = new NodejsFunction(this, 'meadowlarkMetaedHandler', {
-      entry: join(LAMBDAS, 'handlers', 'metadata', 'metaedHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaMetaedHandler = new Function(this, 'meadowlarkMetaedHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.metaedHandler',
     });
 
-    const lambdaApiVersionHandler = new NodejsFunction(this, 'meadowlarkApiVersionHandler', {
-      entry: join(LAMBDAS, 'handlers', 'metadata', 'apiVersionHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaApiVersionHandler = new Function(this, 'meadowlarkApiVersionHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.apiVersionHandler',
     });
 
-    const lambdaSwaggerForResourcesAPIHandler = new NodejsFunction(this, 'meadowlarkSwaggerForResourcesAPIHandler', {
-      entry: join(LAMBDAS, 'handlers', 'metadata', 'swaggerForResourcesAPIHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaSwaggerForResourcesAPIHandler = new Function(this, 'meadowlarkSwaggerForResourcesAPIHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.swaggerForResourcesAPIHandler',
     });
 
-    const lambdaOpenApiUrlListHandler = new NodejsFunction(this, 'meadowlarkOpenApiUrlListHandler', {
-      entry: join(LAMBDAS, 'handlers', 'metadata', 'openApiUrlListHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaOpenApiUrlListHandler = new Function(this, 'meadowlarkOpenApiUrlListHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.openApiUrlListHandler',
     });
 
-    const lambdaSwaggerForDescriptorsAPIHandler = new NodejsFunction(this, 'meadowlarkSwaggerForDescriptorsAPIHandler', {
-      entry: join(LAMBDAS, 'handlers', 'metadata', 'swaggerForDescriptorsAPIHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaSwaggerForDescriptorsAPIHandler = new Function(this, 'meadowlarkSwaggerForDescriptorsAPIHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.swaggerForDescriptorsAPIHandler',
     });
 
-    const lambdaDependenciesHandler = new NodejsFunction(this, 'meadowlarkDependenciesHandler', {
-      entry: join(LAMBDAS, 'handlers', 'metadata', 'dependenciesHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaDependenciesHandler = new Function(this, 'meadowlarkDependenciesHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.dependenciesHandler',
     });
 
-    const lambdaXsdMetadataHandler = new NodejsFunction(this, 'meadowlarkXsdMetadataHandler', {
-      entry: join(LAMBDAS, 'handlers', 'metadata', 'xsdMetadataHandler.ts'),
-      ...nodeJsFunctionProps
+    const lambdaXsdMetadataHandler = new Function(this, 'meadowlarkXsdMetadataHandler', {
+      ...functionProps as FunctionProps,
+      handler: 'handler.xsdMetadataHandler',
+    });
+    
+    /**
+     * ApiGateway Execution Role
+     */
+    // Create IAM role for API Gateway
+    const apiGatewayRole = new iam.Role(this, 'ApiGatewayRole', {
+      assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
     });
 
     /**
@@ -246,17 +233,10 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
      */
     /**
     // Alternative to Spec API for crud handling*/
-    const upsertIntegration = new LambdaIntegration(lambdaUpsertHandler);
-    const getIntegration = new LambdaIntegration(lambdaGetHandler);
-    const deleteIntegration = new LambdaIntegration(lambdaDeleteHandler);
-    const putIntegration = new LambdaIntegration(lambdaPutHandler);
-
-    const crudHandlers = {
-      'get': lambdaGetHandler,
-      'put': lambdaPutHandler,
-      'delete': lambdaDeleteHandler,
-      'post': lambdaUpsertHandler
-    }
+    const upsertIntegration = this.createLambdaIntegrationWithProvisionedConcurrency(lambdaUpsertHandler, apiGatewayRole);
+    const getIntegration = this.createLambdaIntegrationWithProvisionedConcurrency(lambdaGetHandler, apiGatewayRole);
+    const deleteIntegration = this.createLambdaIntegrationWithProvisionedConcurrency(lambdaDeleteHandler, apiGatewayRole);
+    const putIntegration = this.createLambdaIntegrationWithProvisionedConcurrency(lambdaPutHandler, apiGatewayRole);
 
     /**
      * Authorization Handlers
@@ -282,18 +262,6 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     const dependenciesIntegration = new LambdaIntegration(lambdaDependenciesHandler);
     const xsdMetadataIntegration = new LambdaIntegration(lambdaXsdMetadataHandler);
 
-    /**
-     * ApiGateway Execution Role
-     */
-    // Create IAM role for API Gateway
-    const apiGatewayRole = new iam.Role(this, 'ApiGatewayRole', {
-      assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
-    });
-
-    // Grant necessary permissions
-    for (const handler of Object.values(crudHandlers)) {
-      handler.grantInvoke(apiGatewayRole);
-    }
 
     /**
      * API Gateway Services
@@ -370,6 +338,22 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
 
     // Define & Assoc a stage that points to the deployment with the specified properties
     meadowlarkSupportingApi.deploymentStage = new Stage(this, 'MeadowlarkApiStage', stageProps);
+  }
+
+  private createLambdaIntegrationWithProvisionedConcurrency(handler: cdk.aws_lambda.Function, apiGatewayRole: iam.Role) {
+    const version = new Version(this, `Version_${uniqueId()}`, {
+      lambda: handler
+    });
+
+    // lambda function with custom applicaton auto scaler metric
+    const pcHandler = new AutoscaleProvisionedConcurrentLambda(this, `pcHandler${uniqueId()}`, {
+      handler: version,
+      metricType: MetricType.Maximum
+    });
+
+    pcHandler.handler.grantInvoke(apiGatewayRole);
+
+    return new LambdaIntegration(pcHandler.handler);
   }
 }
 

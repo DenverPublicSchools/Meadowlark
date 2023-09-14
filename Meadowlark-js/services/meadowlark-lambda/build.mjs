@@ -33,15 +33,17 @@ function copyWithCopyfiles(from, to, up) {
   });
 }
 
-// Build dependencies
-buildWithEsbuild('../../backends/meadowlark-postgresql-backend/index.ts', 'dist/layer/nodejs/node_modules/meadowlark-postgresql-backend.js', ['pg-native']);
-buildWithEsbuild('../../backends/meadowlark-opensearch-backend/index.ts', 'dist/layer/nodejs/node_modules/meadowlark-opensearch-backend.js');
-buildWithEsbuild('../../node_modules/@edfi/metaed-core/dist/index.js', 'dist/layer/nodejs/node_modules/@edfi/metaed-core/dist/index.js');
-buildWithEsbuild('../../packages/meadowlark-utilities/index.ts', 'dist/layer/nodejs/node_modules/@edfi/meadowlark-utilities/index.js');
-buildWithEsbuild('../../packages/meadowlark-authz-server/index.ts', 'dist/layer/nodejs/node_modules/@edfi/meadowlark-authz-server/index.js');
+// // Build dependencies
+// buildWithEsbuild('../../backends/meadowlark-postgresql-backend/index.ts', 'dist/layer/nodejs/node_modules/meadowlark-postgresql-backend.js', ['pg-native']);
+// buildWithEsbuild('../../backends/meadowlark-opensearch-backend/index.ts', 'dist/layer/nodejs/node_modules/meadowlark-opensearch-backend.js');
+// buildWithEsbuild('../../node_modules/@edfi/metaed-core/dist/index.js', 'dist/layer/nodejs/node_modules/@edfi/metaed-core/dist/index.js');
+// buildWithEsbuild('../../packages/meadowlark-utilities/index.ts', 'dist/layer/nodejs/node_modules/@edfi/meadowlark-utilities/index.js');
+// buildWithEsbuild('../../packages/meadowlark-authz-server/index.ts', 'dist/layer/nodejs/node_modules/@edfi/meadowlark-authz-server/index.js');
 
-// Copy files
-copyWithCopyfiles('../../node_modules/pg-format/lib/reserved.js', 'dist/layer/nodejs/node_modules/', 0);
-copyWithCopyfiles('./dist/node_modules/@edfi/meadowlark-core/index.js', 'dist/node_modules/@edfi/meadowlark-core/dist/index.js', 1);
-copyWithCopyfiles('../../node_modules/@edfi/metaed-core/*.json', 'dist/layer/nodejs/node_modules/@edfi/', 5);
-copyWithCopyfiles('../../node_modules/@edfi/metaed-core/*.json', 'dist/layer/nodejs/node_modules/@edfi/metaed-core', 5);
+// // Copy files
+// copyWithCopyfiles('../../node_modules/pg-format/lib/reserved.js', 'dist/layer/nodejs/node_modules/', 0);
+// copyWithCopyfiles('./dist/node_modules/@edfi/meadowlark-core/index.js', 'dist/node_modules/@edfi/meadowlark-core/dist/index.js', 1);
+// copyWithCopyfiles('../../node_modules/@edfi/metaed-core/*.json', 'dist/layer/nodejs/node_modules/@edfi/', 5);
+// copyWithCopyfiles('../../node_modules/@edfi/metaed-core/*.json', 'dist/layer/nodejs/node_modules/@edfi/metaed-core', 5);
+console.warn("WARNING: Be sure to build lambda/meadowlark-lambda-functions before deploying!")
+console.log("Build: Nothing ToDo :)");

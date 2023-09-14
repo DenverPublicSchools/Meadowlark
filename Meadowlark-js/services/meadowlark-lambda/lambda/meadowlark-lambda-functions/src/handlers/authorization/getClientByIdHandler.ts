@@ -5,7 +5,9 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult, Handler, Context } from 'a
 import { fromRequest, respondWith } from '../../AuthorizationConverter';
 import { bootstrap } from '../../utilities/BootstrapMeadowlark';
 
+let isBootstrapped: boolean = false;
+bootstrap().then((result: boolean) => isBootstrapped = result)
 export const handler: Handler = async (event: APIGatewayProxyEvent, context: Context): Promise<APIGatewayProxyResult> => {
-  await bootstrap();
+  isBootstrapped = !isBootstrapped ? await bootstrap() : isBootstrapped;
   return respondWith(await getClientById(fromRequest(event)));
 }

@@ -4,9 +4,11 @@ import { fromRequest, respondWith } from '../../MeadowlarkConverter';
 import { bootstrap } from '../../utilities/BootstrapMeadowlark';
 
 /**
- * Base endpoint that returns the DS version and supported extensions
+ * Endpoint for accessing Resources API swagger metadata
  */
+let isBootstrapped: boolean = false;
+bootstrap().then((result: boolean) => isBootstrapped = result)
 export const handler: Handler = async (event: APIGatewayProxyEvent, context: Context): Promise<APIGatewayProxyResult> => {
-  await bootstrap();
-  return respondWith(await Meadowlark.apiVersion(fromRequest(event)));
+  isBootstrapped = !isBootstrapped ? await bootstrap() : isBootstrapped;
+  return respondWith(await Meadowlark.swaggerForResourcesAPI(fromRequest(event)));
 }

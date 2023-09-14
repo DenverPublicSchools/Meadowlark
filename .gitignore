@@ -4,3 +4,6 @@
 Meadowlark-js/.env-docker
 **/node_modules/
 Meadowlark-js/sbom
+**/tarballs/
+*.tgz
+meadowlark-lambda-functions.zip

@@ -8,7 +8,7 @@
     "build:base": "tsc && npm run build:deps",
     "build:no-stage": "npm run build:base && cdk synth -q --no-staging",
     "build": "npm run build:base && cdk synth -q",
-    "cdk:deploy": "npm run build && cdk deploy",
+    "cdk:deploy": "npm run build && cdk deploy --no-rollback",
     "build:deps": "node build.mjs"
   },
   "devDependencies": {

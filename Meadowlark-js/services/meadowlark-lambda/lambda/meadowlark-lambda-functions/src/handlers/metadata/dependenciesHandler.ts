@@ -3,10 +3,12 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult, Handler, Context } from 'a
 import { fromRequest, respondWith } from '../../MeadowlarkConverter';
 import { bootstrap } from '../../utilities/BootstrapMeadowlark';
 
-/*
- * Endpoint for listing available Open API metadata descriptions
+/**
+ * Endpoint for accessing Dependencies JSON file
  */
+let isBootstrapped: boolean = false;
+bootstrap().then((result: boolean) => isBootstrapped = result)
 export const handler: Handler = async (event: APIGatewayProxyEvent, context: Context): Promise<APIGatewayProxyResult> => {
-  await bootstrap();
-  return respondWith(await Meadowlark.openApiUrlList(fromRequest(event)));
+  isBootstrapped = !isBootstrapped ? await bootstrap() : isBootstrapped;
+  return respondWith(await Meadowlark.dependencies(fromRequest(event)));
 }

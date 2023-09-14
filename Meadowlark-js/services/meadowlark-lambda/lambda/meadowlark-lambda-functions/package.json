@@ -1,0 +1,29 @@
+{
+  "name": "@edfi/meadowlark-lambda-functions",
+  "version": "0.1.0",
+  "scripts": {
+    "build": "node ./build.js",
+    "setup": "node copy-edfi-packages.js && npm install"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.115",
+    "@types/jest": "29.5.1",
+    "@types/lodash": "4.14.194",
+    "@types/node": "18.14.6",
+    "@types/uuid": "*",
+    "copyfiles": "2.4.1",
+    "dotenv": "^16.0.3",
+    "lodash": "*",
+    "rimraf": "^5.0.1",
+    "typescript": "~4.9.5",
+    "uuid": "*"
+  },
+  "dependencies": {
+    "@edfi/meadowlark-authz-server": "file:tarballs/edfi-meadowlark-authz-server-0.3.0-pre-36.tgz",
+    "@edfi/meadowlark-core": "file:tarballs/edfi-meadowlark-core-0.3.0-pre-36.tgz",
+    "@edfi/meadowlark-opensearch-backend": "file:tarballs/edfi-meadowlark-opensearch-backend-0.3.0-pre-36.tgz",
+    "@edfi/meadowlark-postgresql-backend": "file:tarballs/edfi-meadowlark-postgresql-backend-0.3.0-pre-36.tgz",
+    "@edfi/meadowlark-utilities": "file:tarballs/edfi-meadowlark-utilities-0.3.0-pre-36.tgz",
+    "aws-lambda": "^1.0.7"
+  }
+}

@@ -4,10 +4,11 @@ import { fromRequest, respondWith } from '../../MeadowlarkConverter';
 import { bootstrap } from '../../utilities/BootstrapMeadowlark';
 
 /**
- * An http handler for the metadata endpoint used for diagnostics. Loads the requested MetaEd
- * project and returns MetaEd project metadata in the response header.
+ * Base endpoint that returns the DS version and supported extensions
  */
+let isBootstrapped: boolean = false;
+bootstrap().then((result: boolean) => isBootstrapped = result)
 export const handler: Handler = async (event: APIGatewayProxyEvent, context: Context): Promise<APIGatewayProxyResult> => {
-  await bootstrap();
-  return respondWith(await Meadowlark.metaed(fromRequest(event)));
+  isBootstrapped = !isBootstrapped ? await bootstrap() : isBootstrapped;
+  return respondWith(await Meadowlark.apiVersion(fromRequest(event)));
 }
