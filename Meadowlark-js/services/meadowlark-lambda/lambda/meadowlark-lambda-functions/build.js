@@ -48,7 +48,7 @@ async function build() {
   console.log(`-------------------------------Build:CompileWithTSC---------------------------------`);
   runTSC();
   console.log(`-------------------------------Copy:NodeModules---------------------------------`);
-  // await copyWithCopyfiles('./node_modules/**/*', './dist/node_modules/', 1);
+  await copyWithCopyfiles('./node_modules/**/*', './dist/node_modules/', 1);
   await copyWithCopyfiles('./node_modules/@edfi/ed-fi-model-3.3b/**/*', './dist/node_modules/@edfi/meadowlark-core/node_modules/@edfi/', 2);
   await copyWithCopyfiles('./node_modules/@edfi/ed-fi-model-3.1/**/*', './dist/node_modules/@edfi/meadowlark-core/node_modules/@edfi/', 2);
   await copyWithCopyfiles('./package.json', './dist/', 0);
