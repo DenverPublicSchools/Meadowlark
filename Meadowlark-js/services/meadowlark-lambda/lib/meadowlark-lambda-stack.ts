@@ -100,8 +100,8 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     });
 
     /**
- * Authorization Handlers
- */
+     * Authorization Handlers
+     */
     const lambdaCreateAuthorizationClientHandler = new DockerImageFunction(this, 'meadowlarkCreateAuthorizationClientHandler', {
       ...dockerFunctionProps('handler.createAuthorizationClientHandler') as DockerImageFunctionProps
     });
