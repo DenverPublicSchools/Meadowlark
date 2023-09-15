@@ -32,7 +32,8 @@ function zipDist() {
 
   try {
     if (isWindows) {
-      execSync('powershell Compress-Archive -CompressionLevel "Fastest" -Update -Path "./dist/*" -DestinationPath "meadowlark-lambda-functions.zip"');
+      execSync('7z a -tzip -mx1 meadowlark-lambda-functions.zip ./dist/*')
+      // execSync('powershell Compress-Archive -CompressionLevel "Fastest" -Update -Path "./dist/*" -DestinationPath "meadowlark-lambda-functions.zip"');
     } else {
       execSync('zip -r meadowlark-lambda-functions.zip dist');
     }
