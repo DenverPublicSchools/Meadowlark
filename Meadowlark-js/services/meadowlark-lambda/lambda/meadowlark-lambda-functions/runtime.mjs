@@ -1,6 +1,7 @@
 /** Copyright 2019,2020,2021,2022 Amazon.com, Inc. or its affiliates. All Rights Reserved. */
 // node_modules/lambda-runtime/dist/node16/index.mjs
 import { createRequire } from "module";
+import bootstrap from '/var/task/utilities/BootstrapMeadowlark.js';
 var require2 = createRequire(import.meta.url);
 var __defProp = Object.defineProperty;
 var __defProps = Object.defineProperties;
@@ -24,7 +25,7 @@ var __spreadValues = (a, b) => {
 var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
 var __require = /* @__PURE__ */ ((x) => typeof require2 !== "undefined" ? require2 : typeof Proxy !== "undefined" ? new Proxy(x, {
   get: (a, b) => (typeof require2 !== "undefined" ? require2 : a)[b]
-}) : x)(function(x) {
+}) : x)(function (x) {
   if (typeof require2 !== "undefined")
     return require2.apply(this, arguments);
   throw new Error('Dynamic require of "' + x + '" is not supported');
@@ -182,21 +183,21 @@ var require_VerboseLog = __commonJS({
         return 0;
       }
     })();
-    exports.logger = function(category) {
+    exports.logger = function (category) {
       return {
-        verbose: function() {
+        verbose: function () {
           if (Verbosity >= 1) {
             const args = [...arguments].map((arg) => typeof arg === "function" ? arg() : arg);
             console.log.apply(null, [Tag, category, ...args]);
           }
         },
-        vverbose: function() {
+        vverbose: function () {
           if (Verbosity >= 2) {
             const args = [...arguments].map((arg) => typeof arg === "function" ? arg() : arg);
             console.log.apply(null, [Tag, category, ...args]);
           }
         },
-        vvverbose: function() {
+        vvverbose: function () {
           if (Verbosity >= 3) {
             const args = [...arguments].map((arg) => typeof arg === "function" ? arg() : arg);
             console.log.apply(null, [Tag, category, ...args]);
@@ -356,17 +357,17 @@ var require_ResponseStream = __commonJS({
         req.destroy(err);
       });
       const origEnd = req.end.bind(req);
-      req.end = function(cb) {
+      req.end = function (cb) {
         origEnd(cb);
       };
-      req.setContentType = function(contentType) {
+      req.setContentType = function (contentType) {
         if (status !== STATUS_READY) {
           throw new InvalidStreamingOperation("Cannot set content-type, too late.");
         }
         req.setHeader("Content-Type", contentType);
       };
       const origWrite = req.write.bind(req);
-      req.write = function(chunk, encoding, callback) {
+      req.write = function (chunk, encoding, callback) {
         vvverbose("ResponseStream::write", chunk.length, "callback:", typeof callback);
         if (typeof chunk !== "string" && !Buffer.isBuffer(chunk) && chunk?.constructor !== Uint8Array) {
           chunk = JSON.stringify(chunk);
@@ -384,7 +385,7 @@ var require_ResponseStream = __commonJS({
         return ret;
       };
       const request = writableStreamOnly(req);
-      addFailWeakProp(request, function(err, callback) {
+      addFailWeakProp(request, function (err, callback) {
         verbose("ResponseStream::fail err:", err);
         const error = toRapidResponse(err);
         req.addTrailers({
@@ -570,7 +571,7 @@ var require_LogPatch = __commonJS({
       line = line.replace(/\n/g, "\r");
       process.stdout.write(line + "\n");
     };
-    var logTextToFd = function(logTarget) {
+    var logTextToFd = function (logTarget) {
       let typeAndLength = Buffer.alloc(16);
       typeAndLength.writeUInt32BE(2774138883, 0);
       return (level, message, ...params) => {
@@ -586,7 +587,7 @@ var require_LogPatch = __commonJS({
         fs.writeSync(logTarget, messageBytes);
       };
     };
-    var logJsonToFd = function(logTarget) {
+    var logJsonToFd = function (logTarget) {
       let typeAndLength = Buffer.alloc(16);
       return (level, message, ...params) => {
         let date = new Date();
@@ -717,7 +718,7 @@ var require_InvokeContext = __commonJS({
           identity: _parseJson(this.headers[INVOKE_HEADER.CognitoIdentity], "CognitoIdentity"),
           invokedFunctionArn: this.headers[INVOKE_HEADER.ARN],
           awsRequestId: this.headers[INVOKE_HEADER.AWSRequestId],
-          getRemainingTimeInMillis: function() {
+          getRemainingTimeInMillis: function () {
             return deadline - Date.now();
           }
         };
@@ -782,7 +783,7 @@ var require_CallbackContext = __commonJS({
         client.postInvocationResponse(result, id, callback2);
       };
       let waitForEmptyEventLoop = true;
-      const callback = function(err, result) {
+      const callback = function (err, result) {
         BeforeExitListener2.reset();
         if (err !== void 0 && err !== null) {
           postError(err, scheduleNext);
@@ -830,15 +831,15 @@ var require_CallbackContext = __commonJS({
       return [
         callback,
         callbackContext,
-        function() {
+        function () {
           isCompleteInvoked = true;
         }
       ];
     }
     function _wrappedCallbackContext(callback, callbackContext, markCompleted) {
       let finished = false;
-      const onlyAllowFirstCall = function(toWrap) {
-        return function() {
+      const onlyAllowFirstCall = function (toWrap) {
+        return function () {
           if (!finished) {
             toWrap.apply(null, arguments);
             finished = true;
@@ -850,7 +851,7 @@ var require_CallbackContext = __commonJS({
       callbackContext.done = onlyAllowFirstCall(callbackContext.done);
       return [onlyAllowFirstCall(callback), callbackContext, markCompleted];
     }
-    module.exports.build = function(client, id, scheduleNext) {
+    module.exports.build = function (client, id, scheduleNext) {
       let rawCallbackContext = _rawCallbackContext(client, id, scheduleNext);
       return _wrappedCallbackContext(...rawCallbackContext);
     };
@@ -867,7 +868,7 @@ var require_StreamingContext = __commonJS({
     } = require_Errors();
     var { verbose, vverbose } = require_VerboseLog().logger("STREAM");
     var { tryCallFail } = require_ResponseStream();
-    module.exports.build = function(client, id, scheduleNext, options) {
+    module.exports.build = function (client, id, scheduleNext, options) {
       let waitForEmptyEventLoop = true;
       const scheduleNextNow = () => {
         verbose("StreamingContext::scheduleNextNow entered");
@@ -1086,7 +1087,7 @@ var require_UserFunction = __commonJS({
       const hwm = parseInt(handler[HANDLER_HIGHWATERMARK]);
       return isNaN(hwm) ? void 0 : hwm;
     }
-    module.exports.load = async function(appRoot, fullHandlerString) {
+    module.exports.load = async function (appRoot, fullHandlerString) {
       _throwIfInvalidHandler(fullHandlerString);
       let [moduleRoot, moduleAndHandler] = _moduleRootAndHandler(fullHandlerString);
       let [module2, handlerPath] = _splitHandlerString(moduleAndHandler);
@@ -1100,7 +1101,7 @@ var require_UserFunction = __commonJS({
       }
       return handlerFunc;
     };
-    module.exports.getHandlerMetadata = function(handlerFunc) {
+    module.exports.getHandlerMetadata = function (handlerFunc) {
       return {
         streaming: _isHandlerStreaming(handlerFunc),
         highWaterMark: _highWaterMark(handlerFunc)
@@ -1259,11 +1260,14 @@ async function start() {
 }
 
 async function meadowlarkLambdaRuntimeStart() {
+  console.log("MeadowlarkRuntimeStart")
+
   // before starting, lets trigger a function that will boostrap meadowlark
-  const handlerFunc = await UserFunction.load(process.env.LAMBDA_TASK_ROOT, 'index.handler');
-  handlerFunc({}, {}, () => {
-    console.log("Sucessfully intercepted runtime start and boostrapped meadowlark!")
-  })
+  await bootstrap.bootstrap();
+  // const handlerFunc = await UserFunction.load(process.env.LAMBDA_TASK_ROOT, 'index.handler');
+  // handlerFunc({}, {}, () => {
+  //   console.log("Sucessfully intercepted runtime start and boostrapped meadowlark!")
+  // })
   // src/index.mjs
   await start();
 }
