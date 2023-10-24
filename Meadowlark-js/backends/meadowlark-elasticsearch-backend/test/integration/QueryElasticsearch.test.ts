@@ -15,7 +15,7 @@ import {
   DeleteRequest,
   DeleteResult,
 } from '@edfi/meadowlark-core';
-import { DocumentUuid, MeadowlarkId, TraceId } from '@edfi/meadowlark-core/src/model/BrandedTypes';
+import { DocumentUuid, MeadowlarkId, TraceId } from '@edfi/meadowlark-core/src/model/IdTypes';
 import { generateDocumentUuid } from '@edfi/meadowlark-core/src/model/DocumentIdentity';
 import { Client } from '@elastic/elasticsearch';
 import { queryDocuments } from '../../src/repository/QueryElasticsearch';
@@ -133,7 +133,7 @@ describe('When querying for documents', () => {
         invalidResourceInfo.projectName = 'wrong-project';
         const result = await queryDocuments(setupQueryRequest({}, {}, invalidResourceInfo), client);
 
-        expect(result.response).toEqual('QUERY_FAILURE_INVALID_QUERY');
+        expect(result.response).toEqual('QUERY_FAILURE_INDEX_NOT_FOUND');
         expect(result.documents).toHaveLength(0);
         expect(result.totalCount).toBeUndefined();
       });

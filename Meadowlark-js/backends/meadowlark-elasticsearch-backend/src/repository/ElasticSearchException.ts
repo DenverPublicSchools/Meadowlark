@@ -22,12 +22,7 @@ export async function handleElasticSearchError(
       switch (elasticSearchClientError.name) {
         case 'ConfigurationError':
         case 'ConnectionError':
-        case 'DeserializationError':
-        case 'NoLivingConnectionsError':
-        case 'NotCompatibleError':
-        case 'ElasticsearchClientError':
         case 'RequestAbortedError':
-        case 'SerializationError':
         case 'TimeoutError': {
           if (elasticSearchClientError?.message !== undefined) {
             Logger.error(
@@ -36,7 +31,7 @@ export async function handleElasticSearchError(
               `(${elasticSearchClientError.name}) - ${elasticSearchClientError.message}`,
             );
             return {
-              response: 'QUERY_FAILURE_INVALID_QUERY',
+              response: 'QUERY_FAILURE_CONNECTION_ERROR',
               documents: [],
               failureMessage: elasticSearchClientError.message,
             };
@@ -50,7 +45,7 @@ export async function handleElasticSearchError(
               if (responseException?.message.indexOf('index_not_found_exception') !== -1) {
                 Logger.warn(`${moduleName} ${documentProcessError} index not found`, traceId);
                 return {
-                  response: 'QUERY_FAILURE_INVALID_QUERY',
+                  response: 'QUERY_FAILURE_INDEX_NOT_FOUND',
                   documents: [],
                   failureMessage: 'IndexNotFoundException',
                 };
@@ -65,6 +60,11 @@ export async function handleElasticSearchError(
           }
           break;
         }
+        case 'DeserializationError':
+        case 'NoLivingConnectionsError':
+        case 'NotCompatibleError':
+        case 'ElasticsearchClientError':
+        case 'SerializationError':
         default: {
           break;
         }

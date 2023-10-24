@@ -12,7 +12,6 @@ import { afterQueryDocuments, beforeQueryDocuments } from '../plugin/listener/Pu
 import { QueryResult } from '../message/QueryResult';
 import { FrontendRequest } from './FrontendRequest';
 import { FrontendResponse } from './FrontendResponse';
-import { TraceId } from '../model/BrandedTypes';
 
 const moduleName = 'core.handler.Query';
 const TOTAL_COUNT_HEADER_NAME: string = 'total-count';
@@ -48,7 +47,7 @@ export async function query(frontendRequest: FrontendRequest): Promise<FrontendR
     resourceInfo: frontendRequest.middleware.resourceInfo,
     queryParameters: cleanQueryParameters,
     paginationParameters,
-    traceId: frontendRequest.traceId as TraceId,
+    traceId: frontendRequest.traceId,
     security: frontendRequest.middleware.security,
   };
 
@@ -68,7 +67,19 @@ export async function query(frontendRequest: FrontendRequest): Promise<FrontendR
     return { statusCode: 500, headers: frontendRequest.middleware.headerMetadata };
   }
 
-  if (response === 'QUERY_FAILURE_INVALID_QUERY' && result.failureMessage !== 'IndexNotFoundException') {
+  if (response === 'QUERY_FAILURE_INVALID_QUERY') {
+    const invalidQueryHeaders = {
+      ...frontendRequest.middleware.headerMetadata,
+      [TOTAL_COUNT_HEADER_NAME]: result.totalCount?.toString() ?? '0',
+    };
+    writeDebugStatusToLog(moduleName, frontendRequest, 'query', 500);
+    return {
+      statusCode: 500,
+      headers: invalidQueryHeaders,
+    };
+  }
+
+  if (response === 'QUERY_FAILURE_CONNECTION_ERROR') {
     const invalidQueryHeaders = {
       ...frontendRequest.middleware.headerMetadata,
       [TOTAL_COUNT_HEADER_NAME]: result.totalCount?.toString() ?? '0',
@@ -76,10 +87,19 @@ export async function query(frontendRequest: FrontendRequest): Promise<FrontendR
     writeDebugStatusToLog(moduleName, frontendRequest, 'query', 502);
     return {
       statusCode: 502,
-      body: documents,
       headers: invalidQueryHeaders,
     };
   }
+
+  if (response === 'QUERY_FAILURE_INDEX_NOT_FOUND') {
+    const invalidQueryHeaders = {
+      ...frontendRequest.middleware.headerMetadata,
+      [TOTAL_COUNT_HEADER_NAME]: '0',
+    };
+    writeDebugStatusToLog(moduleName, frontendRequest, 'query', 200);
+    return { statusCode: 200, headers: invalidQueryHeaders, body: documents };
+  }
+
   writeDebugStatusToLog(moduleName, frontendRequest, 'query', 200);
 
   const headers = {

@@ -3,6 +3,10 @@
 // The Ed-Fi Alliance licenses this file to you under the Apache License, Version 2.0.
 // See the LICENSE and NOTICES files in the project root for more information.
 
+/**
+ * NOTE: If Postgres query transactions are modified to use SSI and the use of SELECT...FOR UPDATE/SHARE is removed,
+ * this test case should be updated to adjust its logic and avoid deadlocks at the database level and some test will fail.
+ */
 import {
   DocumentInfo,
   NoDocumentInfo,
@@ -26,7 +30,7 @@ import {
   findReferencingMeadowlarkIds,
   deleteAliasesForDocumentByMeadowlarkId,
   findDocumentByMeadowlarkId,
-  insertOrUpdateDocument,
+  insertDocument,
   findAliasMeadowlarkIdsForDocumentByMeadowlarkId,
   insertAlias,
   insertOutboundReferences,
@@ -34,7 +38,7 @@ import {
 } from '../../../src/repository/SqlHelper';
 import { upsertDocument } from '../../../src/repository/Upsert';
 import { deleteAll } from '../TestHelper';
-import { MeadowlarkDocument, isMeadowlarkDocumentEmpty } from '../../../src/model/MeadowlarkDocument';
+import { MeadowlarkDocument, NoMeadowlarkDocument } from '../../../src/model/MeadowlarkDocument';
 
 // A bunch of setup stuff
 const newUpsertRequest = (): UpsertRequest => ({
@@ -154,19 +158,16 @@ describe('given a delete concurrent with an insert referencing the to-be-deleted
     }
     const documentUuid: DocumentUuid = '9ad5c9fa-82d1-494c-8d54-6aa1457f4364' as DocumentUuid;
     // Perform the insert of AcademicWeek document, adding a reference to to to-be-deleted document
-    const insertResult = await insertOrUpdateDocument(
-      insertClient,
-      {
-        meadowlarkId: academicWeekMeadowlarkId,
-        documentUuid,
-        resourceInfo: academicWeekResourceInfo,
-        documentInfo: academicWeekDocumentInfo,
-        edfiDoc: {},
-        validateDocumentReferencesExist: true,
-        security: newSecurity(),
-      },
-      true,
-    );
+    const insertResult = await insertDocument(insertClient, {
+      meadowlarkId: academicWeekMeadowlarkId,
+      documentUuid,
+      resourceInfo: academicWeekResourceInfo,
+      documentInfo: academicWeekDocumentInfo,
+      edfiDoc: {},
+      validateDocumentReferencesExist: true,
+      security: newSecurity(),
+      traceId: '' as TraceId,
+    });
     // eslint-disable-next-line no-restricted-syntax
     for (const ref of outboundRefs) {
       await insertOutboundReferences(insertClient, academicWeekMeadowlarkId, ref as MeadowlarkId);
@@ -267,19 +268,16 @@ describe('given an insert concurrent with a delete referencing the to-be-deleted
       // Should be no reference validation failures for AcademicWeek document
       expect(upsertFailures).toHaveLength(0);
       const documentUuid: DocumentUuid = '9ad5c9fa-82d1-494c-8d54-6aa1457f4365' as DocumentUuid;
-      const insertResult = await insertOrUpdateDocument(
-        insertClient,
-        {
-          meadowlarkId: academicWeekMeadowlarkId,
-          documentUuid,
-          resourceInfo: academicWeekResourceInfo,
-          documentInfo: academicWeekDocumentInfo,
-          edfiDoc: {},
-          validateDocumentReferencesExist: true,
-          security: newSecurity(),
-        },
-        true,
-      );
+      const insertResult = await insertDocument(insertClient, {
+        meadowlarkId: academicWeekMeadowlarkId,
+        documentUuid,
+        resourceInfo: academicWeekResourceInfo,
+        documentInfo: academicWeekDocumentInfo,
+        edfiDoc: {},
+        validateDocumentReferencesExist: true,
+        security: newSecurity(),
+        traceId: '' as TraceId,
+      });
       expect(insertResult).toEqual(true);
       // eslint-disable-next-line no-restricted-syntax
       for (const ref of outboundRefs) {
@@ -303,10 +301,13 @@ describe('given an insert concurrent with a delete referencing the to-be-deleted
     await resetSharedClient();
   });
 
-  it('should have still have the School document in the db - a success', async () => {
+  it('should not have either document in the db', async () => {
     const schoolDocResult: MeadowlarkDocument = await findDocumentByMeadowlarkId(insertClient, schoolMeadowlarkId);
-    const awDocResult: MeadowlarkDocument = await findDocumentByMeadowlarkId(insertClient, academicWeekMeadowlarkId);
-    expect(isMeadowlarkDocumentEmpty(schoolDocResult)).toEqual(true);
-    expect(isMeadowlarkDocumentEmpty(awDocResult)).toEqual(true);
+    const academicWeekDocResult: MeadowlarkDocument = await findDocumentByMeadowlarkId(
+      insertClient,
+      academicWeekMeadowlarkId,
+    );
+    expect(schoolDocResult).toBe(NoMeadowlarkDocument);
+    expect(academicWeekDocResult).toBe(NoMeadowlarkDocument);
   });
 });

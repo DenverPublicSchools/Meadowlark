@@ -19,11 +19,11 @@ export async function setup(network: StartedNetwork) {
     container = new GenericContainer(process.env.API_IMAGE_NAME ?? 'meadowlark')
       .withName('meadowlark-api-test')
       .withNetwork(network)
+      .withLogConsumer(async (stream) => setAPILog(stream))
       .withExposedPorts({
         container: fastifyPort,
         host: fastifyPort,
       })
-      .withReuse()
       .withEnvironment({
         OAUTH_SIGNING_KEY: process.env.OAUTH_SIGNING_KEY ?? '',
         OAUTH_HARD_CODED_CREDENTIALS_ENABLED: 'true',
@@ -46,7 +46,7 @@ export async function setup(network: StartedNetwork) {
         MEADOWLARK_STAGE: 'local',
         LOG_LEVEL: process.env.LOG_LEVEL ?? 'info',
         LOG_PRETTY_PRINT: 'false',
-        AUTHORIZATION_STORE_PLUGIN: '@edfi/meadowlark-mongodb-backend',
+        AUTHORIZATION_STORE_PLUGIN: process.env.AUTHORIZATION_STORE_PLUGIN ?? '@edfi/meadowlark-mongodb-backend',
         POSTGRES_HOST: 'pg-test',
         POSTGRES_USER: process.env.POSTGRES_USER ?? 'postgres',
         POSTGRES_PASSWORD: process.env.POSTGRES_PASSWORD ?? 'abcdefgh1!',
@@ -63,7 +63,6 @@ export async function setup(network: StartedNetwork) {
 
     throw new Error(`\nUnexpected error setting up API container:\n${error}`);
   }
-  await setAPILog(startedContainer);
 }
 
 export async function stop(): Promise<void> {

@@ -1,20 +1,10 @@
 import { PoolClient } from 'pg';
 import { Logger } from '@edfi/meadowlark-utilities';
 import { CreateAuthorizationClientRequest, TryCreateBootstrapAuthorizationAdminResult } from '@edfi/meadowlark-authz-server';
-import { bootstrapAdminDocumentFromCreate } from './Models/AuthorizationDocument';
+import { bootstrapAdminDocumentFromCreate } from '../../model/AuthorizationDocument';
+import { checkBootstrapAdminExists, insertBootstrapAdmin } from '../SqlHelper';
 
 const functionName = 'postgresql.repository.authorization.tryCreateBootstrapAuthorizationAdminDocument';
-
-const checkBootstrapAdminExistsSql = `
-  SELECT * 
-  FROM meadowlark.authorizations
-  WHERE is_bootstrap_admin = true;
-`;
-
-const insertBootstrapAdminSql = `
-  INSERT INTO meadowlark.authorizations(client_id, client_secret_hashed, client_name, roles, is_bootstrap_admin, active)
-  VALUES($1, $2, $3, $4, $5, $6);
-`;
 
 export async function tryCreateBootstrapAuthorizationAdminDocument(
   request: CreateAuthorizationClientRequest,
@@ -23,9 +13,9 @@ export async function tryCreateBootstrapAuthorizationAdminDocument(
   const createResult: TryCreateBootstrapAuthorizationAdminResult = { response: 'UNKNOWN_FAILURE' };
 
   try {
-    const { rowCount: bootstrapAdminExists } = await client.query(checkBootstrapAdminExistsSql);
+    const bootstrapAdminExists: boolean = await checkBootstrapAdminExists(client);
 
-    if (bootstrapAdminExists > 0) {
+    if (bootstrapAdminExists) {
       Logger.warn(
         `${functionName}: An attempt was made to create a bootstrap Admin ID when one already exists.`,
         request.traceId,
@@ -35,22 +25,18 @@ export async function tryCreateBootstrapAuthorizationAdminDocument(
       const authorizationClient = bootstrapAdminDocumentFromCreate(request);
 
       Logger.debug(`${functionName}: Trying insert of admin client id ${request.clientId}`, request.traceId);
-
-      await client.query(insertBootstrapAdminSql, [
-        authorizationClient._id,
-        authorizationClient.clientSecretHashed,
-        authorizationClient.clientName,
-        JSON.stringify(authorizationClient.roles),
-        authorizationClient.isBootstrapAdmin,
-        authorizationClient.active,
-      ]);
+      const insertResult: boolean = await insertBootstrapAdmin(authorizationClient, client);
 
       Logger.debug(`${functionName}: Inserted admin client`, request.traceId);
-      createResult.response = 'CREATE_SUCCESS';
+      if (insertResult) {
+        createResult.response = 'CREATE_SUCCESS';
+      } else {
+        createResult.response = 'UNKNOWN_FAILURE';
+      }
     }
   } catch (e) {
     Logger.error(functionName, request.traceId, e);
-  } 
+  }
 
   return createResult;
 }
