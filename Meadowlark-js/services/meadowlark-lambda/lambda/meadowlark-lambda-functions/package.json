@@ -19,11 +19,11 @@
     "uuid": "*"
   },
   "dependencies": {
-    "@edfi/meadowlark-authz-server": "file:tarballs/edfi-meadowlark-authz-server-0.3.0-pre-36.tgz",
-    "@edfi/meadowlark-core": "file:tarballs/edfi-meadowlark-core-0.3.0-pre-36.tgz",
-    "@edfi/meadowlark-opensearch-backend": "file:tarballs/edfi-meadowlark-opensearch-backend-0.3.0-pre-36.tgz",
-    "@edfi/meadowlark-postgresql-backend": "file:tarballs/edfi-meadowlark-postgresql-backend-0.3.0-pre-36.tgz",
-    "@edfi/meadowlark-utilities": "file:tarballs/edfi-meadowlark-utilities-0.3.0-pre-36.tgz",
+    "@edfi/meadowlark-authz-server": "file:tarballs/edfi-meadowlark-authz-server-0.3.6-pre-36.tgz",
+    "@edfi/meadowlark-core": "file:tarballs/edfi-meadowlark-core-0.3.6-pre-36.tgz",
+    "@edfi/meadowlark-opensearch-backend": "file:tarballs/edfi-meadowlark-opensearch-backend-0.3.6-pre-36.tgz",
+    "@edfi/meadowlark-postgresql-backend": "file:tarballs/edfi-meadowlark-postgresql-backend-0.3.6-pre-36.tgz",
+    "@edfi/meadowlark-utilities": "file:tarballs/edfi-meadowlark-utilities-0.3.6-pre-36.tgz",
     "aws-lambda": "^1.0.7"
   }
 }
