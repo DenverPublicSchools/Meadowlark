@@ -3,41 +3,34 @@
 // The Ed-Fi Alliance licenses this file to you under the Apache License, Version 2.0.
 // See the LICENSE and NOTICES files in the project root for more information.
 
-import type { PoolClient, QueryResult } from 'pg';
-import { GetResult, GetRequest, MeadowlarkId } from '@edfi/meadowlark-core';
+import type { PoolClient } from 'pg';
+import { GetResult, GetRequest } from '@edfi/meadowlark-core';
 import { Logger } from '@edfi/meadowlark-utilities';
-import { findDocumentByIdSql } from './SqlHelper';
+import { findDocumentByDocumentUuid } from './SqlHelper';
+import { MeadowlarkDocument, NoMeadowlarkDocument } from '../model/MeadowlarkDocument';
 
 const moduleName = 'postgresql.repository.Get';
 
-export async function getDocumentById({ documentUuid, traceId }: GetRequest, client: PoolClient): Promise<GetResult> {
-  // TODO *** cast to unknown is an invalid mixing of meadowlarkId and documentUuid
-  const meadowlarkId: MeadowlarkId = documentUuid as unknown as MeadowlarkId;
+export async function getDocumentByDocumentUuid(
+  { documentUuid, traceId }: GetRequest,
+  client: PoolClient,
+): Promise<GetResult> {
   try {
-    Logger.debug(`${moduleName}.getDocumentById ${meadowlarkId}`, traceId);
-    const queryResult: QueryResult = await client.query(findDocumentByIdSql(meadowlarkId));
+    Logger.debug(`${moduleName}.getDocumentByDocumentUuid ${documentUuid}`, traceId);
+    const meadowlarkDocument: MeadowlarkDocument = await findDocumentByDocumentUuid(client, documentUuid);
 
-    // Postgres will return an empty row set if no results are returned, if we have no rows, there is a problem
-    if (queryResult.rows == null) {
-      const errorMessage = `Could not retrieve document ${meadowlarkId}
-      a null result set was returned, indicating system failure`;
-      Logger.error(errorMessage, traceId);
-      return {
-        response: 'UNKNOWN_FAILURE',
-        document: {},
-        failureMessage: errorMessage,
-      };
+    if (meadowlarkDocument === NoMeadowlarkDocument) {
+      return { response: 'GET_FAILURE_NOT_EXISTS', edfiDoc: {}, documentUuid, lastModifiedDate: 0 };
     }
 
-    if (queryResult.rowCount === 0) return { response: 'GET_FAILURE_NOT_EXISTS', document: {} };
-
-    const response: GetResult = {
+    return {
       response: 'GET_SUCCESS',
-      document: { id: queryResult.rows[0].document_id, ...queryResult.rows[0].edfi_doc },
+      edfiDoc: meadowlarkDocument.edfi_doc,
+      documentUuid,
+      lastModifiedDate: meadowlarkDocument.last_modified_at,
     };
-    return response;
   } catch (e) {
-    Logger.error(`${moduleName}.getDocumentById Error retrieving document ${meadowlarkId}`, traceId, e);
-    return { response: 'UNKNOWN_FAILURE', document: [] };
+    Logger.error(`${moduleName}.getDocumentByDocumentUuid Error retrieving DocumentUuid ${documentUuid}`, traceId, e);
+    return { response: 'UNKNOWN_FAILURE', edfiDoc: {}, documentUuid, lastModifiedDate: 0 };
   }
 }

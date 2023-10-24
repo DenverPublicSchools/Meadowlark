@@ -3,7 +3,7 @@
 // The Ed-Fi Alliance licenses this file to you under the Apache License, Version 2.0.
 // See the LICENSE and NOTICES files in the project root for more information.
 
-export type { DocumentUuid, MeadowlarkId, TraceId } from './model/BrandedTypes';
+export type { DocumentUuid, MeadowlarkId, TraceId } from './model/IdTypes';
 export type { DocumentStorePlugin } from './plugin/backend/DocumentStorePlugin';
 export { NoDocumentStorePlugin } from './plugin/backend/NoDocumentStorePlugin';
 export type { QueryHandlerPlugin } from './plugin/backend/QueryHandlerPlugin';
@@ -20,7 +20,7 @@ export type { DeleteRequest } from './message/DeleteRequest';
 export type { UpdateRequest } from './message/UpdateRequest';
 export type { UpsertRequest } from './message/UpsertRequest';
 export type { QueryRequest } from './message/QueryRequest';
-export type { BlockingDocument } from './message/BlockingDocument';
+export type { ReferringDocumentInfo } from './message/ReferringDocumentInfo';
 export type { PaginationParameters } from './message/PaginationParameters';
 export type { Security } from './security/Security';
 export { newSecurity } from './security/Security';
@@ -32,14 +32,14 @@ export type { FrontendRequest, Headers } from './handler/FrontendRequest';
 export { newFrontendRequest, newFrontendRequestMiddleware } from './handler/FrontendRequest';
 export type { FrontendResponse } from './handler/FrontendResponse';
 export { newFrontendResponse, newFrontendResponseSuccess } from './handler/FrontendResponse';
-export { meadowlarkIdForDocumentIdentity, generateDocumentUuid } from './model/DocumentIdentity';
-export { documentIdForDocumentReference } from './model/DocumentReference';
+export { meadowlarkIdForDocumentIdentity, generateDocumentUuid, NoDocumentIdentity } from './model/DocumentIdentity';
+export { getMeadowlarkIdForDocumentReference } from './model/DocumentReference';
 export type { DocumentInfo } from './model/DocumentInfo';
 export { newDocumentInfo, NoDocumentInfo } from './model/DocumentInfo';
 export type { ResourceInfo } from './model/ResourceInfo';
 export { newResourceInfo, NoResourceInfo } from './model/ResourceInfo';
 export type { SuperclassInfo } from './model/SuperclassInfo';
-export { newSuperclassInfo, documentIdForSuperclassInfo } from './model/SuperclassInfo';
+export { newSuperclassInfo, getMeadowlarkIdForSuperclassInfo } from './model/SuperclassInfo';
 export * as PluginLoader from './plugin/PluginLoader';
 export type { MiddlewareModel } from './middleware/MiddlewareModel';
 export { doNothingMiddleware } from './middleware/DoNothingMiddleware';

@@ -70,6 +70,20 @@ describe('when performing crud operations', () => {
           .expect(404);
       });
     });
+
+    it('should match the location', async () => {
+      const id = await rootURLRequest()
+        .get(resourceResponse.headers.location)
+        .auth(await getAccessToken('vendor'), { type: 'bearer' })
+        .then((response) => response.body.id);
+
+      await baseURLRequest()
+        .get(`${resourceEndpoint}/${id}`)
+        .auth(await getAccessToken('vendor'), { type: 'bearer' })
+        .expect(200);
+
+      expect(resourceResponse.headers.location).toContain(`${resourceEndpoint}/${id}`);
+    });
   });
 
   describe('when getting all resources', () => {
@@ -120,11 +134,59 @@ describe('when performing crud operations', () => {
 
   describe('when updating a resource', () => {
     it('returns 204', async () => {
+      const id = await rootURLRequest()
+        .get(resourceResponse.headers.location)
+        .auth(await getAccessToken('vendor'), { type: 'bearer' })
+        .then((response) => response.body.id);
+
+      await rootURLRequest()
+        .put(resourceResponse.headers.location)
+        .auth(await getAccessToken('host'), { type: 'bearer' })
+        .send({
+          id,
+          ...resourceBody,
+        })
+        .expect(204);
+    });
+
+    it('should fail when resource ID is different in body on put', async () => {
+      const id = 'differentId';
+      await rootURLRequest()
+        .put(resourceResponse.headers.location)
+        .auth(await getAccessToken('host'), { type: 'bearer' })
+        .send({
+          id,
+          ...resourceBody,
+        })
+        .expect(400)
+        .then((response) => {
+          expect(response.body.error).toMatchInlineSnapshot(`
+            {
+              "message": "The identity of the resource does not match the identity in the updated document.",
+            }
+          `);
+        });
+    });
+
+    it('should fail when resource ID is not included in body on put', async () => {
       await rootURLRequest()
         .put(resourceResponse.headers.location)
         .auth(await getAccessToken('host'), { type: 'bearer' })
         .send(resourceBody)
-        .expect(204);
+        .expect(400)
+        .then((response) => {
+          expect(response.body.error).toMatchInlineSnapshot(`
+            [
+              {
+                "context": {
+                  "errorType": "required",
+                },
+                "message": "{requestBody} must have required property 'id'",
+                "path": "{requestBody}",
+              },
+            ]
+          `);
+        });
     });
 
     it('returns updated resource on get', async () => {
@@ -133,6 +195,34 @@ describe('when performing crud operations', () => {
         .auth(await getAccessToken('host'), { type: 'bearer' })
         .then((response) => {
           expect(response.body).toEqual(expect.objectContaining(resourceBody));
+        });
+    });
+
+    it('should fail when resource ID is included in body on post', async () => {
+      const id = await rootURLRequest()
+        .get(resourceResponse.headers.location)
+        .auth(await getAccessToken('host'), { type: 'bearer' })
+        .then((response) => response.body.id);
+      await baseURLRequest()
+        .post(`${resourceEndpoint}`)
+        .auth(await getAccessToken('host'), { type: 'bearer' })
+        .send({
+          id,
+          ...resourceBodyUpdated,
+        })
+        .expect(400)
+        .then((response) => {
+          expect(response.body.error).toMatchInlineSnapshot(`
+            [
+              {
+                "context": {
+                  "errorType": "additionalProperties",
+                },
+                "message": "'id' property is not expected to be here",
+                "path": "{requestBody}",
+              },
+            ]
+          `);
         });
     });
   });

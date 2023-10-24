@@ -6,7 +6,7 @@
 /* eslint-disable no-underscore-dangle */
 
 import { Logger, Config } from '@edfi/meadowlark-utilities';
-import { DeleteResult, DeleteRequest, BlockingDocument, DocumentUuid, TraceId } from '@edfi/meadowlark-core';
+import { DeleteResult, DeleteRequest, ReferringDocumentInfo, DocumentUuid, TraceId } from '@edfi/meadowlark-core';
 import { ClientSession, Collection, MongoClient, WithId } from 'mongodb';
 import retry from 'async-retry';
 import { MeadowlarkDocument } from '../model/MeadowlarkDocument';
@@ -26,7 +26,7 @@ async function checkForReferencesToDocument(
   mongoCollection: Collection<MeadowlarkDocument>,
   session: ClientSession,
 ): Promise<DeleteResult | null> {
-  // Read for aliasIds to validate against
+  // Read for aliasMeadowlarkIds to validate against
   const deleteCandidate: WithId<MeadowlarkDocument> | null = await mongoCollection.findOne(
     { documentUuid },
     onlyReturnAliasIds(session),
@@ -38,7 +38,7 @@ async function checkForReferencesToDocument(
 
   // Check for any references to the document to be deleted
   const anyReferences: WithId<MeadowlarkDocument> | null = await mongoCollection.findOne(
-    onlyDocumentsReferencing(deleteCandidate.aliasIds),
+    onlyDocumentsReferencing(deleteCandidate.aliasMeadowlarkIds),
     onlyReturnId(session),
   );
 
@@ -46,23 +46,24 @@ async function checkForReferencesToDocument(
 
   // Abort on validation failure
   Logger.debug(
-    `${moduleName}.checkForReferencesToDocument: Deleting document uuid ${documentUuid} failed due to existing references`,
+    `${moduleName}.checkForReferencesToDocument: Deleting DocumentUuid ${documentUuid} failed due to existing references`,
     traceId,
   );
 
   // Get the information of up to five blocking documents for failure message purposes
   const referringDocuments: WithId<MeadowlarkDocument>[] = await mongoCollection
-    .find(onlyDocumentsReferencing(deleteCandidate.aliasIds), limitFive(session))
+    .find(onlyDocumentsReferencing(deleteCandidate.aliasMeadowlarkIds), limitFive(session))
     .toArray();
 
-  const blockingDocuments: BlockingDocument[] = referringDocuments.map((document) => ({
-    documentUuid: document._id,
+  const referringDocumentInfo: ReferringDocumentInfo[] = referringDocuments.map((document) => ({
+    documentUuid: document.documentUuid,
+    meadowlarkId: document._id,
     resourceName: document.resourceName,
     projectName: document.projectName,
     resourceVersion: document.resourceVersion,
   }));
 
-  return { response: 'DELETE_FAILURE_REFERENCE', blockingDocuments };
+  return { response: 'DELETE_FAILURE_REFERENCE', referringDocumentInfo };
 }
 
 /**
@@ -71,7 +72,7 @@ async function checkForReferencesToDocument(
  *
  * This function expects Session to have an active transaction. Aborting the transaction on error is left to the caller.
  */
-export async function deleteDocumentByIdTransaction(
+export async function deleteDocumentByMeadowlarkIdTransaction(
   { documentUuid, validateNoReferencesToDocument, traceId }: DeleteRequest,
   mongoCollection: Collection<MeadowlarkDocument>,
   session: ClientSession,
@@ -87,14 +88,17 @@ export async function deleteDocumentByIdTransaction(
   }
 
   // Perform the document delete
-  Logger.debug(`${moduleName}.deleteDocumentByIdTransaction: Deleting document documentUuid ${documentUuid}`, traceId);
+  Logger.debug(
+    `${moduleName}.deleteDocumentByMeadowlarkIdTransaction: Deleting document documentUuid ${documentUuid}`,
+    traceId,
+  );
 
   const { acknowledged, deletedCount } = await mongoCollection.deleteOne({ documentUuid }, { session });
 
   if (!acknowledged) {
     const msg =
       'mongoCollection.deleteOne returned acknowledged: false, indicating a problem with write concern configuration';
-    Logger.error(`${moduleName}.deleteDocumentByIdTransaction`, traceId, msg);
+    Logger.error(`${moduleName}.deleteDocumentByMeadowlarkIdTransaction`, traceId, msg);
     return { response: 'UNKNOWN_FAILURE', failureMessage: '' };
   }
 
@@ -107,7 +111,10 @@ export async function deleteDocumentByIdTransaction(
  * Takes a DeleteRequest and MongoClient from the BackendFacade and performs a delete by documentUuid
  * and returns the DeleteResult.
  */
-export async function deleteDocumentById(deleteRequest: DeleteRequest, client: MongoClient): Promise<DeleteResult> {
+export async function deleteDocumentByDocumentUuid(
+  deleteRequest: DeleteRequest,
+  client: MongoClient,
+): Promise<DeleteResult> {
   const session: ClientSession = client.startSession();
   let deleteResult: DeleteResult = { response: 'UNKNOWN_FAILURE', failureMessage: '' };
   try {
@@ -118,7 +125,7 @@ export async function deleteDocumentById(deleteRequest: DeleteRequest, client: M
     await retry(
       async () => {
         await session.withTransaction(async () => {
-          deleteResult = await deleteDocumentByIdTransaction(deleteRequest, mongoCollection, session);
+          deleteResult = await deleteDocumentByMeadowlarkIdTransaction(deleteRequest, mongoCollection, session);
           if (deleteResult.response !== 'DELETE_SUCCESS') {
             await session.abortTransaction();
           }
@@ -128,14 +135,14 @@ export async function deleteDocumentById(deleteRequest: DeleteRequest, client: M
         retries: numberOfRetries,
         onRetry: () => {
           Logger.warn(
-            `${moduleName}.deleteDocumentById got write conflict error for documentUuid ${deleteRequest.documentUuid}. Retrying...`,
+            `${moduleName}.deleteDocumentByDocumentUuid got write conflict error for documentUuid ${deleteRequest.documentUuid}. Retrying...`,
             deleteRequest.traceId,
           );
         },
       },
     );
   } catch (e) {
-    Logger.error(`${moduleName}.deleteDocumentById`, deleteRequest.traceId, e);
+    Logger.error(`${moduleName}.deleteDocumentByDocumentUuid`, deleteRequest.traceId, e);
 
     let response: DeleteResult = { response: 'UNKNOWN_FAILURE', failureMessage: e.message };
 

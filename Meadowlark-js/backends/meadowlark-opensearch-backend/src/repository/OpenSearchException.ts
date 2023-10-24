@@ -21,12 +21,7 @@ export async function handleOpenSearchError(
       switch (openSearchClientError.name) {
         case 'ConfigurationError':
         case 'ConnectionError':
-        case 'DeserializationError':
-        case 'NoLivingConnectionsError':
-        case 'NotCompatibleError':
-        case 'OpenSearchClientError':
         case 'RequestAbortedError':
-        case 'SerializationError':
         case 'TimeoutError': {
           if (openSearchClientError?.message !== undefined) {
             Logger.error(
@@ -34,7 +29,11 @@ export async function handleOpenSearchError(
               traceId,
               `(${openSearchClientError.name}) - ${openSearchClientError.message}`,
             );
-            return { response: 'QUERY_FAILURE_INVALID_QUERY', documents: [], failureMessage: openSearchClientError.message };
+            return {
+              response: 'QUERY_FAILURE_CONNECTION_ERROR',
+              documents: [],
+              failureMessage: openSearchClientError.message,
+            };
           }
           break;
         }
@@ -42,13 +41,13 @@ export async function handleOpenSearchError(
           const responseException = err as ResponseError;
           if (responseException?.message !== undefined) {
             if (responseException.message !== 'Response Error') {
-              let startPosition = responseException?.message?.indexOf('Reason:');
-              const position = responseException?.message?.indexOf(' Preview');
-              startPosition = startPosition > -1 ? startPosition : 0;
-              if (position > -1) {
-                responseException.message = responseException?.message?.substring(startPosition, position);
-              } else if (startPosition !== 0) {
-                responseException.message = responseException?.message?.substring(startPosition);
+              if (responseException?.message.indexOf('index_not_found_exception') !== -1) {
+                Logger.warn(`${moduleName} ${documentProcessError} index not found`, traceId);
+                return {
+                  response: 'QUERY_FAILURE_INDEX_NOT_FOUND',
+                  documents: [],
+                  failureMessage: 'IndexNotFoundException',
+                };
               }
               Logger.error(
                 `${moduleName} ${documentProcessError}`,
@@ -65,7 +64,7 @@ export async function handleOpenSearchError(
                     // No object has been uploaded for the requested type
                     Logger.warn(`${moduleName} ${documentProcessError} index not found`, traceId);
                     return {
-                      response: 'QUERY_FAILURE_INVALID_QUERY',
+                      response: 'QUERY_FAILURE_INDEX_NOT_FOUND',
                       documents: [],
                       failureMessage: 'IndexNotFoundException',
                     };
@@ -94,6 +93,11 @@ export async function handleOpenSearchError(
           }
           break;
         }
+        case 'DeserializationError':
+        case 'NoLivingConnectionsError':
+        case 'NotCompatibleError':
+        case 'OpenSearchClientError':
+        case 'SerializationError':
         default: {
           break;
         }

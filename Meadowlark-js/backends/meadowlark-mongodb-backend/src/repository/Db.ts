@@ -5,6 +5,7 @@
 
 import { Collection, MongoClient, ReadConcernLevel, W, ClientSession, ObjectId, FindOptions, ReplaceOptions } from 'mongodb';
 import { Logger, Config } from '@edfi//meadowlark-utilities';
+import { MeadowlarkId } from '@edfi/meadowlark-core';
 import { MeadowlarkDocument } from '../model/MeadowlarkDocument';
 import { AuthorizationDocument } from '../model/AuthorizationDocument';
 
@@ -33,7 +34,7 @@ export async function getNewClient(): Promise<MongoClient> {
       .collection(DOCUMENT_COLLECTION_NAME);
     await documentCollection.createIndex({ documentUuid: 1 });
     await documentCollection.createIndex({ outboundRefs: 1 });
-    await documentCollection.createIndex({ aliasIds: 1 });
+    await documentCollection.createIndex({ aliasMeadowlarkIds: 1 });
 
     // Create authorizations collection if not exists
     const authorizationCollection: Collection<AuthorizationDocument> = newClient
@@ -97,11 +98,11 @@ export function getAuthorizationCollection(client: MongoClient): Collection<Auth
  */
 export async function writeLockReferencedDocuments(
   mongoCollection: Collection<MeadowlarkDocument>,
-  referencedDocumentIds: string[],
+  referencedMeadowlarkIds: MeadowlarkId[],
   session: ClientSession,
 ): Promise<void> {
   await mongoCollection.updateMany(
-    { aliasIds: { $in: referencedDocumentIds } },
+    { aliasMeadowlarkIds: { $in: referencedMeadowlarkIds } },
     { $set: { lock: new ObjectId() } },
     { session },
   );
@@ -110,14 +111,23 @@ export async function writeLockReferencedDocuments(
 // MongoDB FindOption to return only the indexed _id field, making this a covered query (MongoDB will optimize)
 export const onlyReturnId = (session: ClientSession): FindOptions => ({ projection: { _id: 1 }, session });
 
-// MongoDB FindOption to return only the indexed documentUuid field, making this a covered query (MongoDB will optimize)
-export const onlyReturnDocumentUuid = (session: ClientSession): FindOptions => ({
-  projection: { documentUuid: 1 },
+// MongoDB FindOption to return only createdAt and lastModifiedAt
+export const onlyReturnTimestamps = (session: ClientSession): FindOptions => ({
+  projection: { createdAt: 1, lastModifiedAt: 1 },
+  session,
+});
+
+// MongoDB FindOption to return the indexed documentUuid and the createdAt and lastModifiedAt fields
+export const onlyReturnDocumentUuidAndTimestamps = (session: ClientSession): FindOptions => ({
+  projection: { documentUuid: 1, createdAt: 1, lastModifiedAt: 1 },
   session,
 });
 
 // MongoDB FindOption to return only the aliasId
-export const onlyReturnAliasId = (session: ClientSession): FindOptions => ({ projection: { 'aliasIds.$': 1 }, session });
+export const onlyReturnAliasMeadowlarkId = (session: ClientSession): FindOptions => ({
+  projection: { 'aliasMeadowlarkIds.$': 1 },
+  session,
+});
 
 // MongoDB ReplaceOption that enables upsert (insert if not exists)
 export const asUpsert = (session: ClientSession): ReplaceOptions => ({ upsert: true, session });

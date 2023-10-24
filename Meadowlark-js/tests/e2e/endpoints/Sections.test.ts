@@ -17,7 +17,7 @@ describe('Sections', () => {
           sectionIdentifier: 'c00v',
           courseOfferingReference: {
             localCourseCode: 'abc',
-            schoolId: 666,
+            schoolId: 66,
             sessionName: 'd',
             schoolYear: 2034,
           },
@@ -64,8 +64,8 @@ describe('Sections', () => {
                   {
                     "identity": {
                       "localCourseCode": "abc",
-                      "schoolReference.schoolId": 666,
-                      "sessionReference.schoolId": 666,
+                      "schoolReference.schoolId": 66,
+                      "sessionReference.schoolId": 66,
                       "sessionReference.schoolYear": 2034,
                       "sessionReference.sessionName": "d",
                     },
@@ -94,17 +94,17 @@ describe('Sections', () => {
   });
 
   describe('without strict validation', () => {
-    let location: string;
+    let sectionLocation: string;
 
     it('should add the section', async () => {
-      location = await createResource({
+      sectionLocation = await createResource({
         endpoint: 'sections',
         role: 'host',
         body: {
           sectionIdentifier: 'c00v',
           courseOfferingReference: {
             localCourseCode: 'abc',
-            schoolId: 666,
+            schoolId: 66,
             sessionName: 'd',
             schoolYear: 2034,
           },
@@ -131,7 +131,7 @@ describe('Sections', () => {
       });
 
       await rootURLRequest()
-        .get(location)
+        .get(sectionLocation)
         .auth(await getAccessToken('host'), { type: 'bearer' })
         .expect(200)
         .then((response) => {
@@ -144,7 +144,7 @@ describe('Sections', () => {
     });
 
     afterAll(async () => {
-      await deleteResourceByLocation(location);
+      await deleteResourceByLocation(sectionLocation, 'section');
     });
   });
 });

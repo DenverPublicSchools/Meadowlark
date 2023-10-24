@@ -4,7 +4,8 @@
 // See the LICENSE and NOTICES files in the project root for more information.
 
 import { Logger } from '@edfi/meadowlark-utilities';
-import { PostgreSqlContainer, StartedTestContainer } from 'testcontainers';
+import { PostgreSqlContainer } from '@testcontainers/postgresql';
+import { StartedTestContainer } from 'testcontainers';
 
 let startedContainer: StartedTestContainer;
 
@@ -19,7 +20,6 @@ export async function setup() {
   try {
     const container = new PostgreSqlContainer(image)
       .withName('postgres-test')
-      .withReuse()
       .withDatabase(process.env.MEADOWLARK_DATABASE_NAME)
       .withUsername(process.env.POSTGRES_USER)
       .withPassword(process.env.POSTGRES_PASSWORD);

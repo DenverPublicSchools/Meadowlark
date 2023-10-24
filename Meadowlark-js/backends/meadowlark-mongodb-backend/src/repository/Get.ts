@@ -11,18 +11,28 @@ import { getDocumentCollection } from './Db';
 
 const moduleName: string = 'mongodb.repository.get';
 
-export async function getDocumentById({ documentUuid, traceId }: GetRequest, client: MongoClient): Promise<GetResult> {
-  Logger.debug(`${moduleName}.getDocumentById ${documentUuid}`, traceId);
+export async function getDocumentByDocumentUuid(
+  { documentUuid, traceId }: GetRequest,
+  client: MongoClient,
+): Promise<GetResult> {
+  Logger.debug(`${moduleName}.getDocumentByDocumentUuid ${documentUuid}`, traceId);
 
   const mongoCollection: Collection<MeadowlarkDocument> = getDocumentCollection(client);
 
   try {
     const result: WithId<MeadowlarkDocument> | null = await mongoCollection.findOne({ documentUuid });
-    if (result === null) return { response: 'GET_FAILURE_NOT_EXISTS', document: {} };
-    // eslint-disable-next-line no-underscore-dangle
-    return { response: 'GET_SUCCESS', document: { id: documentUuid, ...result.edfiDoc } };
+    if (result === null) {
+      return { response: 'GET_FAILURE_NOT_EXISTS', edfiDoc: {}, documentUuid, lastModifiedDate: 0 };
+    }
+
+    return {
+      response: 'GET_SUCCESS',
+      edfiDoc: result.edfiDoc,
+      documentUuid,
+      lastModifiedDate: result.lastModifiedAt,
+    };
   } catch (e) {
     Logger.error(`${moduleName}.getDocumentById exception`, traceId, e);
-    return { response: 'UNKNOWN_FAILURE', document: {} };
+    return { response: 'UNKNOWN_FAILURE', edfiDoc: {}, documentUuid, lastModifiedDate: 0 };
   }
 }

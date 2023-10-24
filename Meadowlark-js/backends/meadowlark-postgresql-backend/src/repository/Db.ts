@@ -7,54 +7,26 @@ import { Pool, Client } from 'pg';
 import type { PoolClient } from 'pg';
 import { Config, Logger } from '@edfi/meadowlark-utilities';
 import {
-  createDocumentTableSql,
-  createDocumentTableUniqueIndexSql,
-  createReferencesTableCheckingIndexSql,
-  createReferencesTableDeletingIndexSql,
-  createReferencesTableSql,
-  createSchemaSql,
-  createDatabaseSql,
-  createAliasesTableSql,
-  createAliasesTableDocumentIndexSql,
-  createAliasesTableAliasIndexSql,
-  createAuthorizationsTableUniqueIndexSql,
-  createAuthorizationsTableSql,
+  createDatabase, checkExistsAndCreateTables
 } from './SqlHelper';
 
 let singletonDbPool: Pool | null = null;
 
-const getDbConfiguration = () => ({
-  host: Config.get<string>('POSTGRES_HOST'),
-  port: Config.get<number>('POSTGRES_PORT'),
-  user: Config.get<string>('POSTGRES_USER'),
-  password: Config.get<string>('POSTGRES_PASSWORD'),
-  database: Config.get<string>('MEADOWLARK_DATABASE_NAME'),
-});
+const getDbConfiguration = () => {
+  if (!Config.get<string>('POSTGRES_USER') || !Config.get<string>('POSTGRES_PASSWORD')) {
+    throw new Error('The POSTGRES_USER and POSTGRES_PASSWORD parameters in the .env file are required and cannot be empty.');
+  }
+  const dbConfiguration = {
+    host: Config.get<string>('POSTGRES_HOST'),
+    port: Config.get<number>('POSTGRES_PORT'),
+    user: Config.get<string>('POSTGRES_USER'),
+    password: Config.get<string>('POSTGRES_PASSWORD'),
+    database: Config.get<string>('MEADOWLARK_DATABASE_NAME'),
+  };
+  return dbConfiguration;
+};
 
 const moduleName = 'postgresql.repository.Db';
-
-/**
- * Checks that the meadowlark schema, document and references tables exist in the database, if not will create them
- * @param client The Postgres client for querying
- */
-export async function checkExistsAndCreateTables(client: PoolClient) {
-  try {
-    await client.query(createSchemaSql);
-    await client.query(createDocumentTableSql);
-    await client.query(createDocumentTableUniqueIndexSql);
-    await client.query(createReferencesTableSql);
-    await client.query(createReferencesTableCheckingIndexSql);
-    await client.query(createReferencesTableDeletingIndexSql);
-    await client.query(createAliasesTableSql);
-    await client.query(createAliasesTableDocumentIndexSql);
-    await client.query(createAliasesTableAliasIndexSql);
-    await client.query(createAuthorizationsTableSql);
-    await client.query(createAuthorizationsTableUniqueIndexSql);
-  } catch (e) {
-    Logger.error(`${moduleName}.checkExistsAndCreateTables error connecting to PostgreSQL`, null, e);
-    throw e;
-  }
-}
 
 /**
  * Create a connection pool, check that the database and table structure is in place
@@ -96,7 +68,7 @@ export async function createConnectionPoolAndReturnClient(): Promise<PoolClient>
   const client: Client = new Client(getDbConfiguration());
   try {
     await client.connect();
-    await client.query(createDatabaseSql(meadowlarkDbName));
+    await createDatabase(client, meadowlarkDbName);
 
     Logger.info(`${moduleName}.createConnectionPoolAndReturnClient database ${meadowlarkDbName} created successfully`, null);
   } catch (e) {
@@ -125,7 +97,6 @@ export async function getSharedClient(): Promise<PoolClient> {
     await checkExistsAndCreateTables(client);
     return client;
   }
-
   // Returns new Postgres Client
   return singletonDbPool.connect();
 }

@@ -9,6 +9,8 @@ import { DescriptorDocument } from '../../src/model/DescriptorDocument';
 import { extractDocumentInfo } from '../../src/extraction/DocumentInfoExtractor';
 import { DocumentIdentity } from '../../src/model/DocumentIdentity';
 
+const requestTimestamp = 10;
+
 const testModel = (): TopLevelEntity => ({
   ...newTopLevelEntity(),
   metaEdName: 'Student',
@@ -23,9 +25,36 @@ const testModel = (): TopLevelEntity => ({
       apiMapping: {
         identityReferenceComponents: [],
         referenceGroups: [],
-        descriptorCollectedProperties: [],
+        descriptorCollectedApiProperties: [],
       },
-      jsonSchema: {
+      jsonSchemaForInsert: {
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        additionalProperties: false,
+        description: 'doc',
+        properties: {
+          uniqueId: {
+            description: 'doc',
+            maxLength: 30,
+            type: 'string',
+          },
+          someBooleanParameter: {
+            description: 'doc',
+            type: 'boolean',
+          },
+          someIntegerParameter: {
+            description: 'doc',
+            type: 'integer',
+          },
+          someDecimalParameter: {
+            description: 'doc',
+            type: 'number',
+          },
+        },
+        required: ['uniqueId'],
+        title: 'EdFi.Student',
+        type: 'object',
+      },
+      jsonSchemaForUpdate: {
         $schema: 'https://json-schema.org/draft/2020-12/schema',
         additionalProperties: false,
         description: 'doc',
@@ -70,7 +99,7 @@ const testSchoolModel = (): TopLevelEntity => ({
       apiMapping: {
         identityReferenceComponents: [],
         referenceGroups: [],
-        descriptorCollectedProperties: [],
+        descriptorCollectedApiProperties: [],
         superclass: {
           metaEdName: 'School',
           documentIdentity: { schoolYear: '2023' },
@@ -80,7 +109,7 @@ const testSchoolModel = (): TopLevelEntity => ({
           resourceName: 'School',
         },
       },
-      jsonSchema: {
+      jsonSchemaForInsert: {
         $schema: 'https://json-schema.org/draft/2020-12/schema',
         additionalProperties: false,
         description: 'doc',
@@ -107,6 +136,37 @@ const testSchoolModel = (): TopLevelEntity => ({
         title: 'EdFi.Student',
         type: 'object',
       },
+      jsonSchemaForUpdate: {
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        additionalProperties: false,
+        description: 'doc',
+        properties: {
+          id: {
+            description: 'The item id',
+            type: 'string',
+          },
+          uniqueId: {
+            description: 'doc',
+            maxLength: 30,
+            type: 'string',
+          },
+          someBooleanParameter: {
+            description: 'doc',
+            type: 'boolean',
+          },
+          someIntegerParameter: {
+            description: 'doc',
+            type: 'integer',
+          },
+          someDecimalParameter: {
+            description: 'doc',
+            type: 'number',
+          },
+        },
+        required: ['id', 'uniqueId'],
+        title: 'EdFi.Student',
+        type: 'object',
+      },
     },
   },
 });
@@ -122,7 +182,7 @@ describe('given IsDescriptor equal true', () => {
     isDescriptor: true,
   };
   beforeAll(async () => {
-    queryResult = await extractDocumentInfo(resourceInfoRequest, body, matchingMetaEdModel);
+    queryResult = await extractDocumentInfo(resourceInfoRequest, body, matchingMetaEdModel, requestTimestamp);
   });
   it('should return documentInfo.', async () => {
     // Assert
@@ -131,6 +191,7 @@ describe('given IsDescriptor equal true', () => {
       documentIdentity: {},
       documentReferences: [],
       superclassInfo: null,
+      requestTimestamp,
     });
   });
 });
@@ -150,7 +211,7 @@ describe('given isDescriptor False', () => {
     isDescriptor: false,
   };
   beforeAll(async () => {
-    queryResult = await extractDocumentInfo(resourceInfoRequest, body, matchingMetaEdModel);
+    queryResult = await extractDocumentInfo(resourceInfoRequest, body, matchingMetaEdModel, requestTimestamp);
   });
   it('should return superclass null.', async () => {
     // Assert
@@ -159,6 +220,7 @@ describe('given isDescriptor False', () => {
       documentIdentity: {},
       documentReferences: [],
       superclassInfo: null,
+      requestTimestamp,
     });
   });
 });
@@ -178,7 +240,7 @@ describe('given isDescriptor False', () => {
     isDescriptor: false,
   };
   beforeAll(async () => {
-    queryResult = await extractDocumentInfo(resourceInfoRequest, body, matchingMetaEdModel);
+    queryResult = await extractDocumentInfo(resourceInfoRequest, body, matchingMetaEdModel, requestTimestamp);
   });
   it('should return superclass.', async () => {
     // Assert
@@ -191,6 +253,7 @@ describe('given isDescriptor False', () => {
         projectName: 'Testing',
         resourceName: 'School',
       },
+      requestTimestamp,
     });
   });
 });

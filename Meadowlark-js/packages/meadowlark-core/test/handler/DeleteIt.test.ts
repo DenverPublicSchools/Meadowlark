@@ -8,8 +8,8 @@ import * as PluginLoader from '../../src/plugin/PluginLoader';
 import { FrontendResponse } from '../../src/handler/FrontendResponse';
 import { FrontendRequest, newFrontendRequest, newFrontendRequestMiddleware } from '../../src/handler/FrontendRequest';
 import { NoDocumentStorePlugin } from '../../src/plugin/backend/NoDocumentStorePlugin';
-import { BlockingDocument } from '../../src/message/BlockingDocument';
-import { DocumentUuid } from '../../src/model/BrandedTypes';
+import { ReferringDocumentInfo } from '../../src/message/ReferringDocumentInfo';
+import { DocumentUuid, MeadowlarkId } from '../../src/model/IdTypes';
 
 const frontendRequest: FrontendRequest = {
   ...newFrontendRequest(),
@@ -151,9 +151,10 @@ describe('given id does not exist', () => {
 
 describe('given the document to be deleted is referenced by other documents ', () => {
   let mockDocumentStore: any;
-  const expectedBlockingDocument: BlockingDocument = {
+  const expectedBlockingDocument: ReferringDocumentInfo = {
     resourceName: 'resourceName',
-    documentUuid: 'documentId',
+    documentUuid: 'documentUuid' as DocumentUuid,
+    meadowlarkId: 'meadowlarkId' as MeadowlarkId,
     projectName: 'Ed-Fi',
     resourceVersion: '3.3.1-b',
   };
@@ -165,7 +166,7 @@ describe('given the document to be deleted is referenced by other documents ', (
       deleteDocumentById: async () =>
         Promise.resolve({
           response: 'DELETE_FAILURE_REFERENCE',
-          blockingDocuments: [expectedBlockingDocument],
+          referringDocumentInfo: [expectedBlockingDocument],
         }),
     });
 
@@ -186,7 +187,7 @@ describe('given the document to be deleted is referenced by other documents ', (
       {
         "error": {
           "blockingUris": [
-            "/v3.3b/ed-fi/resourceNames/documentId",
+            "/v3.3b/ed-fi/resourceNames/documentUuid",
           ],
           "message": "The resource cannot be deleted because it is a dependency of other documents",
         },

@@ -14,7 +14,6 @@ import type { FrontendRequest } from './FrontendRequest';
 import type { FrontendResponse } from './FrontendResponse';
 import { blockingDocumentsToUris, resourceUriFrom } from './UriBuilder';
 import { meadowlarkIdForDocumentIdentity } from '../model/DocumentIdentity';
-import { TraceId } from '../model/BrandedTypes';
 
 const moduleName = 'core.handler.Upsert';
 
@@ -36,7 +35,7 @@ export async function upsert(frontendRequest: FrontendRequest): Promise<Frontend
       edfiDoc: parsedBody,
       validateDocumentReferencesExist: frontendRequest.middleware.validateResources,
       security,
-      traceId: frontendRequest.traceId as TraceId,
+      traceId: frontendRequest.traceId,
     };
 
     await beforeUpsertDocument(request);
@@ -62,7 +61,7 @@ export async function upsert(frontendRequest: FrontendRequest): Promise<Frontend
     }
 
     if (response === 'UPDATE_FAILURE_REFERENCE') {
-      const blockingUris: string[] = blockingDocumentsToUris(frontendRequest, result.blockingDocuments);
+      const blockingUris: string[] = blockingDocumentsToUris(frontendRequest, result.referringDocumentInfo);
       writeDebugStatusToLog(moduleName, frontendRequest, 'upsert', 409, blockingUris.join(','));
       return {
         // body: { error: { message: failureMessage, blockingUris } },
@@ -73,7 +72,7 @@ export async function upsert(frontendRequest: FrontendRequest): Promise<Frontend
     }
 
     if (response === 'INSERT_FAILURE_REFERENCE' || response === 'INSERT_FAILURE_CONFLICT') {
-      const blockingUris: string[] = blockingDocumentsToUris(frontendRequest, result.blockingDocuments);
+      const blockingUris: string[] = blockingDocumentsToUris(frontendRequest, result.referringDocumentInfo);
       writeDebugStatusToLog(moduleName, frontendRequest, 'upsert', 409, blockingUris.join(','));
       return {
         body: R.is(String, failureMessage) ? { error: failureMessage, blockingUris } : failureMessage,

@@ -14,9 +14,10 @@ import { UpdateResult } from '../message/UpdateResult';
 import { FrontendRequest } from './FrontendRequest';
 import { FrontendResponse } from './FrontendResponse';
 import { blockingDocumentsToUris } from './UriBuilder';
-import { TraceId } from '../model/BrandedTypes';
 
 const moduleName = 'core.handler.Update';
+
+type MaybeHasIdField = { id: string | undefined };
 
 /**
  * Entry point for API update requests, which are "by id"
@@ -33,7 +34,21 @@ export async function update(frontendRequest: FrontendRequest): Promise<Frontend
       writeDebugStatusToLog(moduleName, frontendRequest, 'update', 400);
       return { statusCode: 400, headers: headerMetadata };
     }
+    const documentUuidFromBody = (parsedBody as MaybeHasIdField).id;
+    if (documentUuidFromBody !== pathComponents.documentUuid) {
+      const failureMessage = 'The identity of the resource does not match the identity in the updated document.';
+      writeDebugStatusToLog(moduleName, frontendRequest, 'update', 400, failureMessage);
 
+      return {
+        body: {
+          error: {
+            message: failureMessage,
+          },
+        },
+        statusCode: 400,
+        headers: headerMetadata,
+      };
+    }
     const request: UpdateRequest = {
       meadowlarkId: meadowlarkIdForDocumentIdentity(resourceInfo, documentInfo.documentIdentity),
       documentUuid: pathComponents.documentUuid,
@@ -42,7 +57,7 @@ export async function update(frontendRequest: FrontendRequest): Promise<Frontend
       edfiDoc: parsedBody,
       validateDocumentReferencesExist: frontendRequest.middleware.validateResources,
       security,
-      traceId: frontendRequest.traceId as TraceId,
+      traceId: frontendRequest.traceId,
     };
 
     await beforeUpdateDocumentById(request);
@@ -62,7 +77,7 @@ export async function update(frontendRequest: FrontendRequest): Promise<Frontend
     }
 
     if (response === 'UPDATE_FAILURE_REFERENCE') {
-      const blockingUris: string[] = blockingDocumentsToUris(frontendRequest, result.blockingDocuments);
+      const blockingUris: string[] = blockingDocumentsToUris(frontendRequest, result.referringDocumentInfo);
       writeDebugStatusToLog(moduleName, frontendRequest, 'update', 409, 'reference error');
       return {
         body: R.is(String, result.failureMessage) ? { error: result.failureMessage, blockingUris } : result.failureMessage,
@@ -95,7 +110,7 @@ export async function update(frontendRequest: FrontendRequest): Promise<Frontend
     }
 
     if (response === 'UPDATE_FAILURE_CONFLICT') {
-      const blockingUris: string[] = blockingDocumentsToUris(frontendRequest, result.blockingDocuments);
+      const blockingUris: string[] = blockingDocumentsToUris(frontendRequest, result.referringDocumentInfo);
       writeDebugStatusToLog(moduleName, frontendRequest, 'update', 409, blockingUris.join(','));
       return {
         body: { error: { message: result.failureMessage ?? '', blockingUris } },

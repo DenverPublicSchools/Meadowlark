@@ -4,47 +4,58 @@
 // See the LICENSE and NOTICES files in the project root for more information.
 
 import {
+  MeadowlarkId,
   UpdateResult,
   UpdateRequest,
   DocumentReference,
-  documentIdForDocumentReference,
-  documentIdForSuperclassInfo,
-  BlockingDocument,
+  getMeadowlarkIdForDocumentReference,
+  getMeadowlarkIdForSuperclassInfo,
+  ReferringDocumentInfo,
 } from '@edfi/meadowlark-core';
 import { Logger } from '@edfi/meadowlark-utilities';
-import type { PoolClient, QueryResult } from 'pg';
+import type { PoolClient } from 'pg';
 import {
-  documentInsertOrUpdateSql,
-  findAliasIdsForDocumentSql,
-  deleteAliasesForDocumentSql,
-  insertAliasSql,
-  deleteOutboundReferencesOfDocumentSql,
-  insertOutboundReferencesSql,
-  findReferringDocumentInfoForErrorReportingSql,
+  updateDocument,
+  deleteAliasesForDocumentByMeadowlarkId,
+  insertAlias,
+  deleteOutboundReferencesOfDocumentByMeadowlarkId,
+  insertOutboundReferences,
+  findReferringDocumentInfoForErrorReporting,
+  beginTransaction,
+  rollbackTransaction,
+  commitTransaction,
+  findDocumentByDocumentUuid,
 } from './SqlHelper';
 import { validateReferences } from './ReferenceValidation';
+import { MeadowlarkDocument, NoMeadowlarkDocument } from '../model/MeadowlarkDocument';
 
 const moduleName = 'postgresql.repository.Update';
 
-export async function updateDocumentById(
-  { meadowlarkId, resourceInfo, documentInfo, edfiDoc, validateDocumentReferencesExist, traceId, security }: UpdateRequest,
-  client: PoolClient,
-): Promise<UpdateResult> {
-  Logger.info(`${moduleName}.updateDocumentById ${meadowlarkId}`, traceId);
-
+export async function updateDocumentByDocumentUuid(updateRequest: UpdateRequest, client: PoolClient): Promise<UpdateResult> {
+  const { meadowlarkId, documentUuid, resourceInfo, documentInfo, validateDocumentReferencesExist, traceId } = updateRequest;
+  Logger.info(`${moduleName}.updateDocumentByDocumentUuid ${documentUuid}`, traceId);
   let updateResult: UpdateResult = { response: 'UNKNOWN_FAILURE' };
 
-  const outboundRefs: string[] = documentInfo.documentReferences.map((dr: DocumentReference) =>
-    documentIdForDocumentReference(dr),
+  const outboundRefs: MeadowlarkId[] = documentInfo.documentReferences.map((dr: DocumentReference) =>
+    getMeadowlarkIdForDocumentReference(dr),
   );
 
   try {
-    await client.query('BEGIN');
+    await beginTransaction(client);
 
-    const recordExistsResult = await client.query(findAliasIdsForDocumentSql(meadowlarkId));
+    // Get the document to check for staleness and identity change
+    const documentFromDb: MeadowlarkDocument = await findDocumentByDocumentUuid(client, documentUuid);
 
-    if (recordExistsResult.rowCount === 0) {
-      updateResult = { response: 'UPDATE_FAILURE_NOT_EXISTS' };
+    if (documentFromDb === NoMeadowlarkDocument) return { response: 'UPDATE_FAILURE_NOT_EXISTS' };
+
+    // If request is stale, return conflict
+    if (documentFromDb.last_modified_at >= documentInfo.requestTimestamp) {
+      return { response: 'UPDATE_FAILURE_WRITE_CONFLICT' };
+    }
+
+    const existingMeadowlarkId: MeadowlarkId = documentFromDb.meadowlark_id;
+    if (!resourceInfo.allowIdentityUpdates && existingMeadowlarkId !== meadowlarkId) {
+      updateResult = { response: 'UPDATE_FAILURE_IMMUTABLE_IDENTITY' };
       return updateResult;
     }
 
@@ -59,53 +70,49 @@ export async function updateDocumentById(
       // Abort on validation failure
       if (failures.length > 0) {
         Logger.debug(
-          `${moduleName}.updateDocument: Inserting document meadowlarkId ${meadowlarkId} failed due to invalid references`,
+          `${moduleName}.updateDocument: Inserting document documentUuid ${documentUuid} failed due to invalid references`,
           traceId,
         );
 
-        const referringDocuments = await client.query(findReferringDocumentInfoForErrorReportingSql([meadowlarkId]));
-
-        const blockingDocuments: BlockingDocument[] = referringDocuments.rows.map((document) => ({
-          resourceName: document.resource_name,
-          documentUuid: document.document_id,
-          projectName: document.project_name,
-          resourceVersion: document.resource_version,
-        }));
+        const referringDocumentInfo: ReferringDocumentInfo[] = await findReferringDocumentInfoForErrorReporting(client, [
+          existingMeadowlarkId,
+        ]);
 
         updateResult = {
           response: 'UPDATE_FAILURE_REFERENCE',
           failureMessage: { error: { message: 'Reference validation failed', failures } },
-          blockingDocuments,
+          referringDocumentInfo,
         };
-        await client.query('ROLLBACK');
+        await rollbackTransaction(client);
         return updateResult;
       }
     }
 
     // Perform the document update
-    const documentSql: string = documentInsertOrUpdateSql(
-      { id: meadowlarkId, resourceInfo, documentInfo, edfiDoc, validateDocumentReferencesExist, security },
-      false,
-    );
-    const result: QueryResult = await client.query(documentSql);
+    const updateDocumentResult: boolean = await updateDocument(client, updateRequest);
 
     // Delete existing values from the aliases table
-    await client.query(deleteAliasesForDocumentSql(meadowlarkId));
+    await deleteAliasesForDocumentByMeadowlarkId(client, existingMeadowlarkId);
 
-    // Perform insert of alias ids
-    await client.query(insertAliasSql(meadowlarkId, meadowlarkId));
+    // Perform insert of alias meadowlarkIds
+    await insertAlias(client, documentUuid, meadowlarkId, meadowlarkId);
     if (documentInfo.superclassInfo != null) {
-      const superclassAliasId = documentIdForSuperclassInfo(documentInfo.superclassInfo);
-      await client.query(insertAliasSql(meadowlarkId, superclassAliasId));
+      const superclassAliasMeadowlarkId: MeadowlarkId = getMeadowlarkIdForSuperclassInfo(
+        documentInfo.superclassInfo,
+      ) as MeadowlarkId;
+      await insertAlias(client, documentUuid, meadowlarkId, superclassAliasMeadowlarkId);
     }
 
-    // Delete existing references in references table
-    Logger.debug(`${moduleName}.upsertDocument: Deleting references for document meadowlarkId ${meadowlarkId}`, traceId);
-    await client.query(deleteOutboundReferencesOfDocumentSql(meadowlarkId));
+    // Delete existing references in references table (by old meadowlarkId)
+    Logger.debug(
+      `${moduleName}.upsertDocument: Deleting references for document meadowlarkId ${existingMeadowlarkId}`,
+      traceId,
+    );
+    await deleteOutboundReferencesOfDocumentByMeadowlarkId(client, existingMeadowlarkId);
 
     // Adding descriptors to outboundRefs for reference checking
     const descriptorOutboundRefs = documentInfo.descriptorReferences.map((dr: DocumentReference) =>
-      documentIdForDocumentReference(dr),
+      getMeadowlarkIdForDocumentReference(dr),
     );
     outboundRefs.push(...descriptorOutboundRefs);
 
@@ -116,21 +123,20 @@ export async function updateDocumentById(
         `${moduleName}.upsertDocument: Inserting reference meadowlarkId ${ref} for document meadowlarkId ${meadowlarkId}`,
         ref,
       );
-      await client.query(insertOutboundReferencesSql(meadowlarkId, ref));
+      await insertOutboundReferences(client, meadowlarkId, ref as MeadowlarkId);
     }
 
-    await client.query('COMMIT');
+    await commitTransaction(client);
 
-    updateResult =
-      result.rowCount && result.rowCount > 0
-        ? {
-            response: 'UPDATE_SUCCESS',
-          }
-        : {
-            response: 'UPDATE_FAILURE_NOT_EXISTS',
-          };
+    updateResult = updateDocumentResult
+      ? {
+          response: 'UPDATE_SUCCESS',
+        }
+      : {
+          response: 'UPDATE_FAILURE_NOT_EXISTS',
+        };
   } catch (e) {
-    await client.query('ROLLBACK');
+    await rollbackTransaction(client);
     Logger.error(`${moduleName}.upsertDocument`, traceId, e);
     return { response: 'UNKNOWN_FAILURE', failureMessage: e.message };
   }

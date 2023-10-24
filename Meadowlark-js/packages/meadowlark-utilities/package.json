@@ -1,7 +1,7 @@
 {
   "name": "@edfi/meadowlark-utilities",
   "main": "dist/index.js",
-  "version": "0.3.0-pre-36",
+  "version": "0.3.6-pre-36",
   "description": "Meadowlark shared utilities",
   "license": "Apache-2.0",
   "publishConfig": {
@@ -19,6 +19,7 @@
     "build:copy-non-ts": "copyfiles -u 1 -e \"**/*.ts\" \"src/**/*\" dist --verbose"
   },
   "dependencies": {
-    "winston": "^3.8.2"
+    "pino": "^8.15.4",
+    "pino-pretty": "^10.2.3"
   }
 }

@@ -18,6 +18,28 @@ describe('Education contents', () => {
     contentClassDescriptor = await getDescriptorByLocation(contentClassDescriptorLocation);
   });
 
+  // The Data Standard defines EducationContent.LearningResource as a required "Choice".
+  // The MetaEd documentation notes that this "requirement" will not be enforced by the API, and in fact the ODS/API does not enforce it.
+  describe('when creating an EducationContent without shortDescription, contentClassDescriptor and learningResourceMetadataURI', () => {
+    beforeAll(async () => {
+      const contentIdentifier = generateRandomId();
+      educationContentLocation = await createResource({
+        endpoint: 'educationContents',
+        body: {
+          contentIdentifier,
+          namespace: '43211',
+        },
+      });
+    });
+
+    it('should create the education content', async () => {
+      await rootURLRequest()
+        .get(educationContentLocation)
+        .auth(await getAccessToken('vendor'), { type: 'bearer' })
+        .expect(200);
+    });
+  });
+
   describe('Create', () => {
     it('should create an education content', async () => {
       const contentIdentifier = generateRandomId();
@@ -64,10 +86,15 @@ describe('Education contents', () => {
 
     it('should edit an education content', async () => {
       const uri = 'uri://ed-fi.org/fake-updated-uri';
+      const id = await rootURLRequest()
+        .get(educationContentLocation)
+        .auth(await getAccessToken('vendor'), { type: 'bearer' })
+        .then((response) => response.body.id);
       await rootURLRequest()
         .put(educationContentLocation)
         .auth(await getAccessToken('vendor'), { type: 'bearer' })
         .send({
+          id,
           contentIdentifier,
           namespace: '43210',
           shortDescription: 'ShortDesc',
@@ -87,10 +114,10 @@ describe('Education contents', () => {
   });
 
   afterEach(async () => {
-    await deleteResourceByLocation(educationContentLocation);
+    await deleteResourceByLocation(educationContentLocation, 'educationContent');
   });
 
   afterAll(async () => {
-    await deleteResourceByLocation(contentClassDescriptorLocation);
+    await deleteResourceByLocation(contentClassDescriptorLocation, 'contentClass');
   });
 });

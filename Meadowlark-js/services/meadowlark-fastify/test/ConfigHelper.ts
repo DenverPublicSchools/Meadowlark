@@ -14,7 +14,7 @@ export const setupMockConfiguration = (isDebug: boolean = false, disableAnonymiz
         return 0;
       case 'MEADOWLARK_STAGE':
         return 'local';
-      case 'IS_LOCAL':
+      case 'LOG_PRETTY_PRINT':
         return true;
       case 'OAUTH_SERVER_ENDPOINT_FOR_OWN_TOKEN_REQUEST':
         return 'https://a/b/oauth/token';
@@ -42,6 +42,10 @@ export const setupMockConfiguration = (isDebug: boolean = false, disableAnonymiz
         return isDebug ? 'DEBUG' : 'ERROR';
       case 'DISABLE_LOG_ANONYMIZATION':
         return disableAnonymization;
+      case 'LOG_TO_FILE':
+        return false;
+      case 'LOG_FILE_LOCATION':
+        return '/var/log/';
       case 'MEADOWLARK_DATABASE_NAME':
         return 'meadowlark-test';
       case 'MONGO_WRITE_CONCERN':

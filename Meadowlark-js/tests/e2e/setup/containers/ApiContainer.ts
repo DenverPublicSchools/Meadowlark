@@ -19,11 +19,11 @@ export async function setup(network: StartedNetwork) {
     container = new GenericContainer(process.env.API_IMAGE_NAME ?? 'meadowlark')
       .withName('meadowlark-api-test')
       .withNetwork(network)
+      .withLogConsumer(async (stream) => setAPILog(stream))
       .withExposedPorts({
         container: fastifyPort,
         host: fastifyPort,
       })
-      .withReuse()
       .withEnvironment({
         OAUTH_SIGNING_KEY: process.env.OAUTH_SIGNING_KEY ?? '',
         OAUTH_HARD_CODED_CREDENTIALS_ENABLED: 'true',
@@ -34,17 +34,23 @@ export async function setup(network: StartedNetwork) {
         OPENSEARCH_USERNAME: 'admin',
         OPENSEARCH_PASSWORD: 'admin',
         OPENSEARCH_ENDPOINT: 'http://opensearch-test:8200',
+        ELASTICSEARCH_ENDPOINT: 'http://elasticsearch-node-test:9200',
+        ELASTICSEARCH_REQUEST_TIMEOUT: '10000',
         DOCUMENT_STORE_PLUGIN: process.env.DOCUMENT_STORE_PLUGIN ?? '@edfi/meadowlark-mongodb-backend',
-        QUERY_HANDLER_PLUGIN: '@edfi/meadowlark-opensearch-backend',
-        LISTENER1_PLUGIN: '@edfi/meadowlark-opensearch-backend',
+        QUERY_HANDLER_PLUGIN: process.env.QUERY_HANDLER_PLUGIN ?? '@edfi/meadowlark-opensearch-backend',
+        LISTENER1_PLUGIN: process.env.LISTENER1_PLUGIN ?? '@edfi/meadowlark-opensearch-backend',
         MONGO_URI: process.env.MONGO_URI ?? 'mongodb://mongo-t1:27017/?directConnection=true',
         FASTIFY_RATE_LIMIT: 'false',
         FASTIFY_PORT: `${fastifyPort}`,
         FASTIFY_NUM_THREADS: process.env.FASTIFY_NUM_THREADS ?? '10',
         MEADOWLARK_STAGE: 'local',
         LOG_LEVEL: process.env.LOG_LEVEL ?? 'info',
-        IS_LOCAL: 'false',
-        AUTHORIZATION_STORE_PLUGIN: '@edfi/meadowlark-mongodb-backend',
+        LOG_PRETTY_PRINT: 'false',
+        AUTHORIZATION_STORE_PLUGIN: process.env.AUTHORIZATION_STORE_PLUGIN ?? '@edfi/meadowlark-mongodb-backend',
+        POSTGRES_HOST: 'pg-test',
+        POSTGRES_USER: process.env.POSTGRES_USER ?? 'postgres',
+        POSTGRES_PASSWORD: process.env.POSTGRES_PASSWORD ?? 'abcdefgh1!',
+        MEADOWLARK_DATABASE_NAME: process.env.MEADOWLARK_DATABASE_NAME ?? 'postgres',
       });
 
     startedContainer = await container.start();
@@ -57,7 +63,6 @@ export async function setup(network: StartedNetwork) {
 
     throw new Error(`\nUnexpected error setting up API container:\n${error}`);
   }
-  await setAPILog(startedContainer);
 }
 
 export async function stop(): Promise<void> {

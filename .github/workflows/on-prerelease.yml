@@ -37,7 +37,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@8c91899e586c5b171469028077307d293428b516 # v3.5.1
         with:
-          node-version: "16"
+          node-version: "18"
           cache: "npm"
           cache-dependency-path: "**/package-lock.json"
 
@@ -198,7 +198,7 @@ jobs:
         id: sbom-hash-code
         shell: bash
         run: |
-          echo sbom-hash-code=$(iconv -f UTF-16 -t ASCII ./sbom/_manifest/spdx_2.2/manifest.spdx.json.sha256) >> $GITHUB_OUTPUT
+          echo sbom-hash-code=$(sha256sum ./sbom/_manifest/spdx_2.2/manifest.spdx.json | awk '{split($0,a); print a[1]}') >> $GITHUB_OUTPUT
 
   sbom-attach:
     name: Attach SBOM file

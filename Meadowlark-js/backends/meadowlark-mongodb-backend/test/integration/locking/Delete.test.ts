@@ -57,7 +57,7 @@ const schoolDocumentInfo: DocumentInfo = {
   ...newDocumentInfo(),
   documentIdentity: { schoolId: '123' },
 };
-const schoolDocumentId = meadowlarkIdForDocumentIdentity(schoolResourceInfo, schoolDocumentInfo.documentIdentity);
+const schoolMeadowlarkId = meadowlarkIdForDocumentIdentity(schoolResourceInfo, schoolDocumentInfo.documentIdentity);
 
 const referenceToSchool: DocumentReference = {
   projectName: schoolResourceInfo.projectName,
@@ -79,20 +79,22 @@ const academicWeekDocumentInfo: DocumentInfo = {
 
   documentReferences: [referenceToSchool],
 };
-const academicWeekDocumentId = meadowlarkIdForDocumentIdentity(
+const academicWeekMeadowlarkId = meadowlarkIdForDocumentIdentity(
   academicWeekResourceInfo,
   academicWeekDocumentInfo.documentIdentity,
 );
 
-const academicWeekDocument: MeadowlarkDocument = meadowlarkDocumentFrom(
-  academicWeekResourceInfo,
-  academicWeekDocumentInfo,
+const academicWeekDocument: MeadowlarkDocument = meadowlarkDocumentFrom({
+  resourceInfo: academicWeekResourceInfo,
+  documentInfo: academicWeekDocumentInfo,
   documentUuid,
-  academicWeekDocumentId,
-  {},
-  true,
-  '',
-);
+  meadowlarkId: academicWeekMeadowlarkId,
+  edfiDoc: {},
+  validate: true,
+  createdBy: '',
+  createdAt: Date.now(),
+  lastModifiedAt: Date.now(),
+});
 
 describe('given a delete concurrent with an insert referencing the to-be-deleted document - using read lock scheme', () => {
   let client: MongoClient;
@@ -105,7 +107,7 @@ describe('given a delete concurrent with an insert referencing the to-be-deleted
 
     // Insert a School document - it will be referenced by an AcademicWeek document while being deleted
     await upsertDocument(
-      { ...newUpsertRequest(), meadowlarkId: schoolDocumentId, documentInfo: schoolDocumentInfo },
+      { ...newUpsertRequest(), meadowlarkId: schoolMeadowlarkId, documentInfo: schoolDocumentInfo },
       client,
     );
 
@@ -137,12 +139,15 @@ describe('given a delete concurrent with an insert referencing the to-be-deleted
     const deleteSession: ClientSession = client.startSession();
     deleteSession.startTransaction();
 
-    // Get the aliasIds for the School document, used to check for references to it as School or as EducationOrganization
-    const deleteCandidate: any = await mongoCollection.findOne({ _id: schoolDocumentId }, onlyReturnAliasIds(deleteSession));
+    // Get the aliasMeadowlarkIds for the School document, used to check for references to it as School or as EducationOrganization
+    const deleteCandidate: any = await mongoCollection.findOne(
+      { _id: schoolMeadowlarkId },
+      onlyReturnAliasIds(deleteSession),
+    );
 
     // Check for any references to the School document
     const anyReferences = await mongoCollection.findOne(
-      onlyDocumentsReferencing(deleteCandidate.aliasIds),
+      onlyDocumentsReferencing(deleteCandidate.aliasMeadowlarkIds),
       onlyReturnId(deleteSession),
     );
 
@@ -151,7 +156,7 @@ describe('given a delete concurrent with an insert referencing the to-be-deleted
 
     // Perform the insert of AcademicWeek document, adding a reference to to to-be-deleted document
     const { upsertedCount } = await mongoCollection.replaceOne(
-      { _id: academicWeekDocumentId },
+      { _id: academicWeekMeadowlarkId },
       academicWeekDocument,
       asUpsert(upsertSession),
     );
@@ -166,7 +171,7 @@ describe('given a delete concurrent with an insert referencing the to-be-deleted
 
     // Try deleting the School document - should fail thanks to AcademicWeek's read-for-write lock
     try {
-      await mongoCollection.deleteOne({ _id: schoolDocumentId }, { session: deleteSession });
+      await mongoCollection.deleteOne({ _id: schoolMeadowlarkId }, { session: deleteSession });
     } catch (e) {
       expect(e).toMatchInlineSnapshot(
         `[MongoServerError: WriteConflict error: this operation conflicted with another operation. Please retry your operation or multi-document transaction.]`,
@@ -186,7 +191,7 @@ describe('given a delete concurrent with an insert referencing the to-be-deleted
 
   it('should have still have the School document in the db - a success', async () => {
     const collection: Collection<MeadowlarkDocument> = getDocumentCollection(client);
-    const result: any = await collection.findOne({ _id: schoolDocumentId });
+    const result: any = await collection.findOne({ _id: schoolMeadowlarkId });
     expect(result.documentIdentity.schoolId).toBe('123');
   });
 });

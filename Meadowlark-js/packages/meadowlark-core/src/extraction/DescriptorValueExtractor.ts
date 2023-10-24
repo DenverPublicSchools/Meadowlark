@@ -14,7 +14,7 @@ import {
 import { DocumentReference } from '../model/DocumentReference';
 
 // TODO: The behavior of calculating the body names of descriptors for an entity can be pushed into a
-// new MetaEd enhancer, and entity.data.edfiApiSchema.apiMapping.descriptorCollectedProperties
+// new MetaEd enhancer, and entity.data.edfiApiSchema.apiMapping.descriptorCollectedApiProperties
 // can be replaced with an array structure with the resolved name, isCollection flag, metaEdType and metaEdName,
 // named something like entity.data.edfiApiSchema.apiMapping.descriptorPropertyBodyNames
 
@@ -27,7 +27,8 @@ function extractForDescriptorCollection(
   topLevelName: string,
 ): DocumentReference[] {
   const { apiMapping } = collectedProperty.property.data.edfiApiSchema as EntityPropertyApiSchemaData;
-  const bodyDescriptorArray = body[prefixedName(topLevelName, collectedProperty.propertyModifier)];
+  const bodyDescriptorArray =
+    body[prefixedName(topLevelName, collectedProperty.property, collectedProperty.propertyModifier)];
 
   // Handle optional case
   if (bodyDescriptorArray == null) return [];
@@ -41,11 +42,17 @@ function extractForDescriptorCollection(
         isAssignableFrom: false,
         documentIdentity: {
           descriptor:
-            bodyDescriptorObject[prefixedName(apiMapping.descriptorCollectionName, collectedProperty.propertyModifier)],
+            bodyDescriptorObject[
+              prefixedName(
+                apiMapping.descriptorCollectionName,
+                collectedProperty.property,
+                collectedProperty.propertyModifier,
+              )
+            ],
         },
 
         isDescriptor: true,
-      } as DocumentReference),
+      }) as DocumentReference,
   );
 }
 
@@ -57,7 +64,7 @@ function extractDescriptorValuesFromBody(
   const { apiMapping } = collectedProperty.property.data.edfiApiSchema as EntityPropertyApiSchemaData;
   if (apiMapping.isDescriptorCollection) return extractForDescriptorCollection(collectedProperty, body, topLevelName);
 
-  const bodyDescriptorName = prefixedName(topLevelName, collectedProperty.propertyModifier);
+  const bodyDescriptorName = prefixedName(topLevelName, collectedProperty.property, collectedProperty.propertyModifier);
   // Handle optional case
   if (body[bodyDescriptorName] == null) return [];
   return [
@@ -76,9 +83,9 @@ function extractDescriptorValuesFromBody(
  */
 export function extractDescriptorValues(entity: TopLevelEntity, body: object): DocumentReference[] {
   const result: DocumentReference[] = [];
-  const { descriptorCollectedProperties } = (entity.data.edfiApiSchema as EntityApiSchemaData).apiMapping;
+  const { descriptorCollectedApiProperties } = (entity.data.edfiApiSchema as EntityApiSchemaData).apiMapping;
 
-  descriptorCollectedProperties.forEach((collectedProperty: CollectedProperty) => {
+  descriptorCollectedApiProperties.forEach((collectedProperty: CollectedProperty) => {
     const topLevelName = topLevelApiNameOnEntity(entity, collectedProperty.property);
     result.push(...extractDescriptorValuesFromBody(collectedProperty, body, topLevelName));
   });

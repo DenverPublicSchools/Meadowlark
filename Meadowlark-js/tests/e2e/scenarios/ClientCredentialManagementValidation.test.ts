@@ -17,14 +17,18 @@ describe("given it's handling the client permission", () => {
   let vendorToken: string;
   let hostToken: string;
   let adminToken: string;
+  let countryLocation: string;
   beforeAll(async () => {
     vendorToken = await getAccessToken('vendor');
     hostToken = await getAccessToken('host');
     adminToken = await adminAccessToken();
   });
 
+  afterAll(async () => {
+    await deleteResourceByLocation(countryLocation, 'country');
+  });
+
   describe('when resource is created by host', () => {
-    let countryLocation: string;
     beforeAll(async () => {
       countryLocation = await createResource({
         endpoint: 'countryDescriptors',
@@ -54,10 +58,15 @@ describe("given it's handling the client permission", () => {
     });
 
     it('returns 403 when updating by vendor', async () => {
+      const id = await rootURLRequest()
+        .get(countryLocation)
+        .auth(vendorToken, { type: 'bearer' })
+        .then((response) => response.body.id);
       await rootURLRequest()
         .put(countryLocation)
         .auth(vendorToken, { type: 'bearer' })
         .send({
+          id,
           codeValue: 'US',
           shortDescription: 'US',
           description: 'USA',
@@ -67,12 +76,11 @@ describe("given it's handling the client permission", () => {
     });
 
     afterAll(async () => {
-      await deleteResourceByLocation(countryLocation);
+      await deleteResourceByLocation(countryLocation, 'country');
     });
   });
 
   describe('when resource is created by admin', () => {
-    let countryLocation: string;
     beforeAll(async () => {
       countryLocation = await createResource({
         endpoint: 'countryDescriptors',
@@ -99,10 +107,6 @@ describe("given it's handling the client permission", () => {
         .then((response) => {
           expect(response.body).toEqual(expect.objectContaining(countryDescriptor));
         });
-    });
-
-    afterAll(async () => {
-      await deleteResourceByLocation(countryLocation);
     });
   });
 });

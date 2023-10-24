@@ -13,12 +13,14 @@ const moduleName = 'core.middleware.ValidateDocumentMiddleware';
  * Validates JSON document shape
  */
 export async function documentValidation({ frontendRequest, frontendResponse }: MiddlewareModel): Promise<MiddlewareModel> {
+  const isUpdate = frontendRequest.action === 'updateById';
   // if there is a response already posted, we are done
   if (frontendResponse != null) return { frontendRequest, frontendResponse };
   writeRequestToLog(moduleName, frontendRequest, 'documentValidation');
   const error: object | null = await validateDocument(
     frontendRequest.middleware.parsedBody,
     frontendRequest.middleware.matchingMetaEdModel,
+    isUpdate,
   );
 
   if (error != null) {

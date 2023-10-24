@@ -5,13 +5,13 @@
 
 /* eslint-disable no-underscore-dangle */
 
-import { UpdateResult, UpdateRequest, BlockingDocument } from '@edfi/meadowlark-core';
+import { UpdateResult, UpdateRequest, ReferringDocumentInfo } from '@edfi/meadowlark-core';
 import { Logger, Config } from '@edfi/meadowlark-utilities';
 import { Collection, ClientSession, MongoClient, WithId } from 'mongodb';
 import retry from 'async-retry';
 import { MeadowlarkDocument, meadowlarkDocumentFrom } from '../model/MeadowlarkDocument';
-import { getDocumentCollection, limitFive, onlyReturnId, writeLockReferencedDocuments } from './Db';
-import { deleteDocumentByIdTransaction } from './Delete';
+import { getDocumentCollection, limitFive, onlyReturnTimestamps, writeLockReferencedDocuments } from './Db';
+import { deleteDocumentByMeadowlarkIdTransaction } from './Delete';
 import { onlyDocumentsReferencing, validateReferences } from './ReferenceValidation';
 import { upsertDocumentTransaction } from './Upsert';
 
@@ -62,7 +62,7 @@ async function insertUpdatedDocument(
         traceId,
         'Got "INSERT_FAILURE_REFERENCE" from upsertDocumentTransaction() but references should not have been validated',
       );
-      return { response: 'UPDATE_FAILURE_REFERENCE', blockingDocuments: upsertResult.blockingDocuments };
+      return { response: 'UPDATE_FAILURE_REFERENCE', referringDocumentInfo: upsertResult.referringDocumentInfo };
     case 'UPDATE_FAILURE_REFERENCE':
       // Something unexpected happened. There should have been a prior delete, and validation should not have occurred.
       Logger.error(
@@ -70,9 +70,9 @@ async function insertUpdatedDocument(
         traceId,
         'Got "UPDATE_FAILURE_REFERENCE" from upsertDocumentTransaction() but document should have been deleted first and references should not have been validated',
       );
-      return { response: 'UPDATE_FAILURE_REFERENCE', blockingDocuments: upsertResult.blockingDocuments };
+      return { response: 'UPDATE_FAILURE_REFERENCE', referringDocumentInfo: upsertResult.referringDocumentInfo };
     case 'INSERT_FAILURE_CONFLICT':
-      return { response: 'UPDATE_FAILURE_CONFLICT', blockingDocuments: upsertResult.blockingDocuments };
+      return { response: 'UPDATE_FAILURE_CONFLICT', referringDocumentInfo: upsertResult.referringDocumentInfo };
     default:
       return { response: 'UNKNOWN_FAILURE', failureMessage: upsertResult.failureMessage };
   }
@@ -91,10 +91,32 @@ async function tryUpdateByReplacement(
   mongoCollection: Collection<MeadowlarkDocument>,
   session: ClientSession,
 ): Promise<UpdateResult | null> {
-  // Try to update - for a matching documentUuid and matching identity (via meadowlarkId)
-  const { acknowledged, matchedCount } = await mongoCollection.replaceOne({ _id: meadowlarkId, documentUuid }, document, {
-    session,
-  });
+  // Try to update - for a matching documentUuid and matching identity (via meadowlarkId),
+  // where the update request is not stale
+  const { acknowledged, matchedCount } = await mongoCollection.updateOne(
+    {
+      _id: meadowlarkId,
+      documentUuid,
+      lastModifiedAt: { $lt: document.lastModifiedAt },
+    },
+    {
+      $set: {
+        documentIdentity: document.documentIdentity,
+        projectName: document.projectName,
+        resourceName: document.resourceName,
+        resourceVersion: document.resourceVersion,
+        isDescriptor: document.isDescriptor,
+        edfiDoc: document.edfiDoc,
+        aliasMeadowlarkIds: document.aliasMeadowlarkIds,
+        outboundRefs: document.outboundRefs,
+        validated: document.validated,
+        lastModifiedAt: document.lastModifiedAt,
+      },
+    },
+    {
+      session,
+    },
+  );
 
   // Check for general MongoDB problems
   if (!acknowledged) {
@@ -125,7 +147,7 @@ async function updateAllowingIdentityChange(
 ): Promise<UpdateResult> {
   const { documentUuid, resourceInfo, traceId, security } = updateRequest;
 
-  // Optimize by trying a replacement update, which will succeed if there is no identity change
+  // Optimize happy path by trying a replacement update, which will succeed if there is no identity change
   const tryUpdateByReplacementResult: UpdateResult | null = await tryUpdateByReplacement(
     document,
     updateRequest,
@@ -139,9 +161,32 @@ async function updateAllowingIdentityChange(
     return tryUpdateByReplacementResult;
   }
 
-  // Either the documentUuid doesn't exist or the identity has changed.
-  // The following delete attempt will catch if documentUuid does not exist
-  const deleteResult = await deleteDocumentByIdTransaction(
+  // Failure to match means either:
+  //  1) document not there (invalid documentUuid)
+  //  2) this is an attempt to change the document identity (mismatched meadowlarkId)
+  //  3) the requestTimestamp for the update is too old
+
+  // See if the document is there
+  const documentByUuid: WithId<MeadowlarkDocument> | null = await mongoCollection.findOne(
+    { documentUuid: updateRequest.documentUuid },
+    onlyReturnTimestamps(session),
+  );
+
+  if (documentByUuid == null) {
+    // The document is not there
+    return { response: 'UPDATE_FAILURE_NOT_EXISTS' };
+  }
+
+  if (documentByUuid.lastModifiedAt >= document.lastModifiedAt) {
+    // The update request is stale
+    return { response: 'UPDATE_FAILURE_WRITE_CONFLICT' };
+  }
+
+  // Get the createdAt from the original document before deleting
+  document.createdAt = documentByUuid.createdAt;
+
+  // Attempt to delete document before insert. Will work only if meadowlarkIds match between old and new
+  const deleteResult = await deleteDocumentByMeadowlarkIdTransaction(
     { documentUuid, resourceInfo, security, validateNoReferencesToDocument: true, traceId },
     mongoCollection,
     session,
@@ -153,8 +198,11 @@ async function updateAllowingIdentityChange(
       // document was deleted, so we can insert the new version
       return insertUpdatedDocument(updateRequest, mongoCollection, session, document);
     case 'DELETE_FAILURE_NOT_EXISTS':
-      // document was not found on delete
-      return { response: 'UPDATE_FAILURE_NOT_EXISTS' };
+      // document was not found on delete, which shouldn't happen
+      return {
+        response: 'UNKNOWN_FAILURE',
+        failureMessage: `Document uuid ${documentUuid} should have been found but was not`,
+      };
     case 'DELETE_FAILURE_REFERENCE':
       // We have an update cascade scenario
       //
@@ -183,7 +231,7 @@ async function updateDisallowingIdentityChange(
 ): Promise<UpdateResult> {
   // Perform the document update
   Logger.debug(
-    `${moduleName}.updateDisallowingIdentityChange: Updating document uuid ${updateRequest.documentUuid}`,
+    `${moduleName}.updateDisallowingIdentityChange: Updating DocumentUuid ${updateRequest.documentUuid}`,
     updateRequest.traceId,
   );
 
@@ -199,14 +247,26 @@ async function updateDisallowingIdentityChange(
 
   if (tryUpdateByReplacementResult != null) return tryUpdateByReplacementResult;
 
-  // Failure to match means either document not there (invalid documentUuid) or this is an attempt to change
-  // the document identity (mismatched meadowlarkId). See if the document is there.
+  // Failure to match means either:
+  //  1) document not there (invalid documentUuid)
+  //  2) this is an attempt to change the document identity (mismatched meadowlarkId)
+  //  3) the requestTimestamp for the update is too old
+
+  // See if the document is there
   const documentByUuid: WithId<MeadowlarkDocument> | null = await mongoCollection.findOne(
     { documentUuid: updateRequest.documentUuid },
-    onlyReturnId(session),
+    onlyReturnTimestamps(session),
   );
 
-  if (documentByUuid == null) return { response: 'UPDATE_FAILURE_NOT_EXISTS' };
+  if (documentByUuid == null) {
+    // The document is not there
+    return { response: 'UPDATE_FAILURE_NOT_EXISTS' };
+  }
+
+  if (documentByUuid.lastModifiedAt >= document.lastModifiedAt) {
+    // The update request is stale
+    return { response: 'UPDATE_FAILURE_WRITE_CONFLICT' };
+  }
 
   // The identity of the new document is different from the existing document
   return { response: 'UPDATE_FAILURE_IMMUTABLE_IDENTITY' };
@@ -233,7 +293,7 @@ async function checkForInvalidReferences(
   if (failures.length === 0) return null;
 
   Logger.debug(
-    `${moduleName}.checkForInvalidReferences: Updating document uuid ${documentUuid} failed due to invalid references`,
+    `${moduleName}.checkForInvalidReferences: Updating DocumentUuid ${documentUuid} failed due to invalid references`,
     traceId,
   );
 
@@ -241,8 +301,9 @@ async function checkForInvalidReferences(
     .find(onlyDocumentsReferencing([meadowlarkId]), limitFive(session))
     .toArray();
 
-  const blockingDocuments: BlockingDocument[] = referringDocuments.map((document) => ({
-    documentUuid: document._id,
+  const referringDocumentInfo: ReferringDocumentInfo[] = referringDocuments.map((document) => ({
+    documentUuid: document.documentUuid,
+    meadowlarkId: document._id,
     resourceName: document.resourceName,
     projectName: document.projectName,
     resourceVersion: document.resourceVersion,
@@ -251,18 +312,17 @@ async function checkForInvalidReferences(
   return {
     response: 'UPDATE_FAILURE_REFERENCE',
     failureMessage: { message: 'Reference validation failed', failures },
-    blockingDocuments,
+    referringDocumentInfo,
   };
 }
 
-async function updateDocumentByIdTransaction(
+async function updateDocumentByDocumentUuidTransaction(
   updateRequest: UpdateRequest,
   mongoCollection: Collection<MeadowlarkDocument>,
   session: ClientSession,
 ): Promise<UpdateResult> {
   const { meadowlarkId, documentUuid, resourceInfo, documentInfo, edfiDoc, validateDocumentReferencesExist, security } =
     updateRequest;
-
   if (validateDocumentReferencesExist) {
     const invalidReferenceResult: UpdateResult | null = await checkForInvalidReferences(
       updateRequest,
@@ -273,17 +333,17 @@ async function updateDocumentByIdTransaction(
       return invalidReferenceResult;
     }
   }
-
-  const document: MeadowlarkDocument = meadowlarkDocumentFrom(
+  const document: MeadowlarkDocument = meadowlarkDocumentFrom({
     resourceInfo,
     documentInfo,
     documentUuid,
     meadowlarkId,
     edfiDoc,
-    validateDocumentReferencesExist,
-    security.clientId,
-  );
-
+    validate: validateDocumentReferencesExist,
+    createdBy: security.clientId,
+    createdAt: null, // null because this is a document update, createdAt must come from existing document
+    lastModifiedAt: documentInfo.requestTimestamp,
+  });
   if (resourceInfo.allowIdentityUpdates) {
     return updateAllowingIdentityChange(document, updateRequest, mongoCollection, session);
   }
@@ -294,9 +354,12 @@ async function updateDocumentByIdTransaction(
  * Takes an UpdateRequest and MongoClient from the BackendFacade and performs an update by documentUuid
  * and returns the UpdateResult.
  */
-export async function updateDocumentById(updateRequest: UpdateRequest, client: MongoClient): Promise<UpdateResult> {
+export async function updateDocumentByDocumentUuid(
+  updateRequest: UpdateRequest,
+  client: MongoClient,
+): Promise<UpdateResult> {
   const { documentUuid, traceId } = updateRequest;
-  Logger.info(`${moduleName}.updateDocumentById ${documentUuid}`, traceId);
+  Logger.info(`${moduleName}.updateDocumentByDocumentUuid ${documentUuid}`, traceId);
 
   const mongoCollection: Collection<MeadowlarkDocument> = getDocumentCollection(client);
   const session: ClientSession = client.startSession();
@@ -308,7 +371,7 @@ export async function updateDocumentById(updateRequest: UpdateRequest, client: M
     await retry(
       async () => {
         await session.withTransaction(async () => {
-          updateResult = await updateDocumentByIdTransaction(updateRequest, mongoCollection, session);
+          updateResult = await updateDocumentByDocumentUuidTransaction(updateRequest, mongoCollection, session);
           if (updateResult.response !== 'UPDATE_SUCCESS') {
             await session.abortTransaction();
           }
@@ -318,14 +381,14 @@ export async function updateDocumentById(updateRequest: UpdateRequest, client: M
         retries: numberOfRetries,
         onRetry: () => {
           Logger.warn(
-            `${moduleName}.updateDocumentById got write conflict error for documentUuid ${updateRequest.documentUuid}. Retrying...`,
+            `${moduleName}.updateDocumentByDocumentUuid got write conflict error for documentUuid ${updateRequest.documentUuid}. Retrying...`,
             updateRequest.traceId,
           );
         },
       },
     );
   } catch (e) {
-    Logger.error(`${moduleName}.updateDocumentById`, traceId, e);
+    Logger.error(`${moduleName}.updateDocumentByDocumentUuid`, traceId, e);
     await session.abortTransaction();
 
     // If this is a MongoError, it has a codeName

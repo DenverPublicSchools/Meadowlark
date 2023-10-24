@@ -30,6 +30,10 @@ export type ConfigKeys =
   | 'OPENSEARCH_USERNAME'
   | 'OPENSEARCH_PASSWORD'
   | 'OPENSEARCH_REQUEST_TIMEOUT'
+  | 'ELASTICSEARCH_ENDPOINT'
+  | 'ELASTICSEARCH_USERNAME'
+  | 'ELASTICSEARCH_PASSWORD'
+  | 'ELASTICSEARCH_REQUEST_TIMEOUT'
   | 'LISTENER1_PLUGIN'
   | 'LISTENER2_PLUGIN'
   | 'QUERY_HANDLER_PLUGIN'
@@ -40,8 +44,10 @@ export type ConfigKeys =
   | 'POSTGRES_PASSWORD'
   | 'OAUTH_CLIENT_PROVIDED_TOKEN_CACHE_TTL'
   | 'OAUTH_CLIENT_PROVIDED_TOKEN_CACHE_MAX_ENTRIES'
-  | 'IS_LOCAL'
+  | 'LOG_PRETTY_PRINT'
   | 'LOG_LEVEL'
+  | 'LOG_TO_FILE'
+  | 'LOG_FILE_LOCATION'
   | 'FASTIFY_PORT'
   | 'MEADOWLARK_STAGE'
   | 'FASTIFY_RATE_LIMIT'
@@ -93,8 +99,10 @@ export async function initializeConfig(provider: ConfigPlugin) {
   set('HTTP_PROTOCOL_AND_SERVER', await provider.getString('HTTP_PROTOCOL_AND_SERVER', 'http://localhost'));
   set('FASTIFY_RATE_LIMIT', await provider.getInt('FASTIFY_RATE_LIMIT', 0));
   set('MEADOWLARK_STAGE', await provider.getString('MEADOWLARK_STAGE', 'local'));
-  set('IS_LOCAL', await provider.getBool('IS_LOCAL', true));
+  set('LOG_PRETTY_PRINT', await provider.getBool('LOG_PRETTY_PRINT', false));
   set('LOG_LEVEL', await provider.getString('LOG_LEVEL', 'info'));
+  set('LOG_TO_FILE', await provider.getBool('LOG_TO_FILE', false));
+  set('LOG_FILE_LOCATION', await provider.getString('LOG_FILE_LOCATION', '/var/log/'));
   set('OAUTH_CLIENT_PROVIDED_TOKEN_CACHE_TTL', await provider.getInt('OAUTH_CLIENT_PROVIDED_TOKEN_CACHE_TTL', 300000));
   set(
     'OAUTH_CLIENT_PROVIDED_TOKEN_CACHE_MAX_ENTRIES',
@@ -129,6 +137,18 @@ export async function initializeConfig(provider: ConfigPlugin) {
     set('OPENSEARCH_USERNAME', await provider.getString('OPENSEARCH_USERNAME', 'x'));
     set('OPENSEARCH_PASSWORD', await provider.getString('OPENSEARCH_PASSWORD', 'y'));
     set('OPENSEARCH_REQUEST_TIMEOUT', await provider.getInt('OPENSEARCH_REQUEST_TIMEOUT', 30000));
+  }
+
+  // should only be required if enabled...
+  if (
+    get<string>('LISTENER1_PLUGIN') === '@edfi/meadowlark-elasticsearch-backend' ||
+    get<string>('LISTENER2_PLUGIN') === '@edfi/meadowlark-elasticsearch-backend' ||
+    get<string>('QUERY_HANDLER_PLUGIN') === '@edfi/meadowlark-elasticsearch-backend'
+  ) {
+    set('ELASTICSEARCH_ENDPOINT', await provider.getString('ELASTICSEARCH_ENDPOINT', ThrowIfNotFound));
+    set('ELASTICSEARCH_USERNAME', await provider.getString('ELASTICSEARCH_USERNAME', 'x'));
+    set('ELASTICSEARCH_PASSWORD', await provider.getString('ELASTICSEARCH_PASSWORD', 'y'));
+    set('ELASTICSEARCH_REQUEST_TIMEOUT', await provider.getInt('ELASTICSEARCH_REQUEST_TIMEOUT', 30000));
   }
 
   set('ALLOW_TYPE_COERCION', await provider.getBool('ALLOW_TYPE_COERCION', false));

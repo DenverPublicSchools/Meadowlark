@@ -17,13 +17,15 @@ import {
   TraceId,
   MeadowlarkId,
   DocumentUuid,
+  UpdateRequest,
 } from '@edfi/meadowlark-core';
 import { Collection, MongoClient } from 'mongodb';
 import { MeadowlarkDocument } from '../../src/model/MeadowlarkDocument';
 import { getDocumentCollection, getNewClient } from '../../src/repository/Db';
-import { getDocumentById } from '../../src/repository/Get';
+import { getDocumentByDocumentUuid } from '../../src/repository/Get';
 import { upsertDocument } from '../../src/repository/Upsert';
 import { setupConfigForIntegration } from './Config';
+import { updateDocumentByDocumentUuid } from '../../src/repository/Update';
 
 const newGetRequest = (): GetRequest => ({
   documentUuid: '' as DocumentUuid,
@@ -34,6 +36,17 @@ const newGetRequest = (): GetRequest => ({
 
 const newUpsertRequest = (): UpsertRequest => ({
   meadowlarkId: '' as MeadowlarkId,
+  resourceInfo: NoResourceInfo,
+  documentInfo: NoDocumentInfo,
+  edfiDoc: {},
+  validateDocumentReferencesExist: false,
+  security: { ...newSecurity() },
+  traceId: 'traceId' as TraceId,
+});
+
+const newUpdateRequest = (): UpdateRequest => ({
+  meadowlarkId: '' as MeadowlarkId,
+  documentUuid: '' as DocumentUuid,
   resourceInfo: NoResourceInfo,
   documentInfo: NoDocumentInfo,
   edfiDoc: {},
@@ -61,7 +74,7 @@ describe('given the get of a non-existent document', () => {
 
     client = (await getNewClient()) as MongoClient;
 
-    getResult = await getDocumentById({ ...newGetRequest(), documentUuid: '123' as DocumentUuid }, client);
+    getResult = await getDocumentByDocumentUuid({ ...newGetRequest(), documentUuid: '123' as DocumentUuid }, client);
   });
 
   afterAll(async () => {
@@ -91,6 +104,7 @@ describe('given the get of an existing document', () => {
   const documentInfo: DocumentInfo = {
     ...newDocumentInfo(),
     documentIdentity: { natural: 'get2' },
+    requestTimestamp: 1683326572053,
   };
   const meadowlarkId = meadowlarkIdForDocumentIdentity(resourceInfo, documentInfo.documentIdentity);
 
@@ -109,7 +123,7 @@ describe('given the get of an existing document', () => {
     const upsertResult = await upsertDocument(upsertRequest, client);
     if (upsertResult.response !== 'INSERT_SUCCESS') throw new Error();
 
-    getResult = await getDocumentById(
+    getResult = await getDocumentByDocumentUuid(
       { ...newGetRequest(), documentUuid: upsertResult.newDocumentUuid, resourceInfo },
       client,
     );
@@ -122,6 +136,79 @@ describe('given the get of an existing document', () => {
 
   it('should return the document', async () => {
     expect(getResult.response).toBe('GET_SUCCESS');
-    expect(getResult.document.inserted).toBe('yes');
+    expect(getResult.edfiDoc.inserted).toBe('yes');
+  });
+
+  it('should return the lastmodifiedDate', async () => {
+    expect(getResult.response).toBe('GET_SUCCESS');
+    expect(getResult.lastModifiedDate).toBe(1683326572053);
+  });
+});
+
+describe('given the get of an updated document', () => {
+  let client;
+  let getResult;
+
+  const resourceInfo: ResourceInfo = {
+    ...newResourceInfo(),
+    resourceName: 'School',
+  };
+  const documentInfo1: DocumentInfo = {
+    ...newDocumentInfo(),
+    documentIdentity: { natural: 'getUpdatedDocument' },
+    requestTimestamp: 1683326572053,
+  };
+
+  const documentInfo2: DocumentInfo = {
+    ...newDocumentInfo(),
+    documentIdentity: { natural: 'getUpdatedDocument' },
+    requestTimestamp: 1683548337342,
+  };
+
+  const meadowlarkId = meadowlarkIdForDocumentIdentity(resourceInfo, documentInfo1.documentIdentity);
+
+  beforeAll(async () => {
+    await setupConfigForIntegration();
+
+    client = (await getNewClient()) as MongoClient;
+    const upsertRequest: UpsertRequest = {
+      ...newUpsertRequest(),
+      meadowlarkId,
+      documentInfo: documentInfo1,
+      edfiDoc: { inserted: 'yes' },
+    };
+
+    // insert the initial version
+    const upsertResult = await upsertDocument(upsertRequest, client);
+    if (upsertResult.response !== 'INSERT_SUCCESS') throw new Error();
+
+    const updateRequest: UpdateRequest = {
+      ...newUpdateRequest(),
+      documentUuid: upsertResult.newDocumentUuid,
+      meadowlarkId,
+      documentInfo: documentInfo2,
+      edfiDoc: { natural: 'keyUpdated' },
+    };
+    const updateResult = await updateDocumentByDocumentUuid(updateRequest, client);
+    if (updateResult.response !== 'UPDATE_SUCCESS') throw new Error();
+    getResult = await getDocumentByDocumentUuid(
+      { ...newGetRequest(), documentUuid: upsertResult.newDocumentUuid, resourceInfo },
+      client,
+    );
+  });
+
+  afterAll(async () => {
+    await getDocumentCollection(client).deleteMany({});
+    await client.close();
+  });
+
+  it('should return the updated document', async () => {
+    expect(getResult.response).toBe('GET_SUCCESS');
+    expect(getResult.edfiDoc.natural).toBe('keyUpdated');
+  });
+
+  it('should return the updated lastmodifiedDate', async () => {
+    expect(getResult.response).toBe('GET_SUCCESS');
+    expect(getResult.lastModifiedDate).toBe(1683548337342);
   });
 });

@@ -31,6 +31,11 @@ export interface DocumentInfo {
    * If this document is a subclass, this provides the document superclass information.
    */
   superclassInfo: SuperclassInfo | null;
+
+  /**
+   * The time that this document request was made
+   */
+  requestTimestamp: number;
 }
 
 /**
@@ -42,6 +47,7 @@ export function newDocumentInfo(): DocumentInfo {
     superclassInfo: null,
     documentReferences: [],
     descriptorReferences: [],
+    requestTimestamp: 0,
   };
 }
 

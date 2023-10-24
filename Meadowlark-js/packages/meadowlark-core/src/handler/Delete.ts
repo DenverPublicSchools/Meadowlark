@@ -13,7 +13,6 @@ import { DeleteResult } from '../message/DeleteResult';
 import { FrontendRequest } from './FrontendRequest';
 import { FrontendResponse } from './FrontendResponse';
 import { blockingDocumentsToUris } from './UriBuilder';
-import { TraceId } from '../model/BrandedTypes';
 
 const moduleName = 'core.handler.Delete';
 
@@ -39,7 +38,7 @@ export async function deleteIt(frontendRequest: FrontendRequest): Promise<Fronte
       resourceInfo: frontendRequest.middleware.resourceInfo,
       validateNoReferencesToDocument: frontendRequest.middleware.validateResources,
       security: frontendRequest.middleware.security,
-      traceId: frontendRequest.traceId as TraceId,
+      traceId: frontendRequest.traceId,
     };
 
     await beforeDeleteDocumentById(request);
@@ -57,7 +56,7 @@ export async function deleteIt(frontendRequest: FrontendRequest): Promise<Fronte
     }
 
     if (result.response === 'DELETE_FAILURE_REFERENCE') {
-      const blockingUris: string[] = blockingDocumentsToUris(frontendRequest, result.blockingDocuments);
+      const blockingUris: string[] = blockingDocumentsToUris(frontendRequest, result.referringDocumentInfo);
 
       if (isDebugEnabled()) {
         writeDebugStatusToLog(moduleName, frontendRequest, 'deleteIt', 409, blockingUris.join(','));

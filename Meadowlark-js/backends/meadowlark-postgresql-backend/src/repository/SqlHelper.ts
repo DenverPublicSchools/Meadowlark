@@ -2,268 +2,717 @@
 // Licensed to the Ed-Fi Alliance under one or more agreements.
 // The Ed-Fi Alliance licenses this file to you under the Apache License, Version 2.0.
 // See the LICENSE and NOTICES files in the project root for more information.
+import { ReferringDocumentInfo, DocumentUuid, MeadowlarkId, DeleteResult, UpdateRequest } from '@edfi/meadowlark-core';
+import { Logger } from '@edfi/meadowlark-utilities';
+import { Client, PoolClient, QueryResult, types } from 'pg';
 import format from 'pg-format';
+import {
+  AuthorizationClientRole,
+  GetAllAuthorizationClientsResult,
+  ResetAuthorizationClientSecretRequest,
+  ResetAuthorizationClientSecretResult,
+  UpdateAuthorizationClientRequest,
+} from '@edfi/meadowlark-authz-server';
+import { MeadowlarkDocument, NoMeadowlarkDocument, MeadowlarkDocumentIdAndAliasId } from '../model/MeadowlarkDocument';
+import { AuthorizationDocument, NoAuthorizationDocument } from '../model/AuthorizationDocument';
 
-// SQL for Selects
+const moduleName = 'postgresql.repository.SqlHelper';
+
+// node-postgres returns bigint as string. Add converter to return bigints as number.
+types.setTypeParser(types.builtins.INT8, (bigintAsString) => parseInt(bigintAsString, 10));
 
 /**
- * Returns the SQL query that does a reverse lookup to find the ids of documents that reference the given ids.
- *
- * @param referencedDocumentIds the ids of the documents that are being referenced
- * @returns a SQL query to find the ids of the documents referencing the given ids
+ * Executes a database begin transaction
+ * @param client database connector client.
  */
-export function findReferencingDocumentIdsSql(referencedDocumentIds: string[]): string {
-  return format(
-    `SELECT parent_document_id FROM meadowlark.references WHERE referenced_document_id IN (%L)`,
-    referencedDocumentIds,
-  );
+export async function beginTransaction(client: PoolClient) {
+  await client.query('BEGIN');
 }
 
 /**
- * Returns the SQL query to find the alias ids for a given document. Alias ids include the document id
- * itself along with any superclass variations that the document satisifies. For example, a School is a subclass
- * of EducationOrganization, so each School document has an additional alias id as an EducationOrganization.
+ * Executes a database rollback transaction
+ * @param client database connector client.
+ */
+export async function rollbackTransaction(client: PoolClient) {
+  await client.query('ROLLBACK');
+}
+
+/**
+ * Executes a database commit transaction
+ * @param client database connector client.
+ */
+export async function commitTransaction(client: PoolClient) {
+  await client.query('COMMIT');
+}
+
+/**
+ * Checks if a QueryResult has rows.
+ * @param client database connector client.
+ * @returns true if it has rows or false if not.
+ */
+function hasResults(queryResult: QueryResult<any>): boolean {
+  if (queryResult == null) {
+    return false;
+  }
+  return (queryResult?.rowCount ?? 0) > 0;
+}
+
+/**
+ * Returns a list of meadowlarkIds of documents that reference the given meadowlarkIds.
+ *
+ * @param client database connector client.
+ * @param referencedMeadowlarkIds the array of meadowlarkIds of the documents that are being referenced
+ * @returns an array of meadowlarkIds of the documents referencing the given meadowlarkIds
+ */
+export async function findReferencingMeadowlarkIds(
+  client: PoolClient,
+  referencedMeadowlarkIds: MeadowlarkId[],
+): Promise<MeadowlarkId[]> {
+  const querySelect = format(
+    `SELECT parent_meadowlark_id FROM meadowlark.references WHERE referenced_meadowlark_id IN (%L)`,
+    referencedMeadowlarkIds,
+  );
+  const queryResult: QueryResult<any> = await client.query(querySelect);
+  return (hasResults(queryResult) ? queryResult.rows.map((ref) => ref.parent_meadowlark_id) : []) as MeadowlarkId[];
+}
+
+/**
+ * Returns the alias meadowlarkIds for a given document. Alias meadowlarkIds include the document
+ * meadowlarkId itself along with any superclass variations that the document satisfies. For example, a School is a subclass
+ * of EducationOrganization, so each School document has an additional alias meadowlarkId as an EducationOrganization.
  *
  * This has a secondary function of read-for-write locking this row for proper updating and deleting.
  *
- * @param documentId the id of the document to find aliases for
- * @returns a SQL query to find the alias ids of the given document
+ * @param client database connector client.
+ * @param meadowlarkId the meadowlarkId of the document to find aliases for
+ * @returns an array of alias meadowlarkIds of the given document
  */
-export function findAliasIdsForDocumentSql(documentId: string): string {
-  return format(`SELECT alias_id FROM meadowlark.aliases WHERE document_id = %L FOR SHARE NOWAIT`, documentId);
+export async function findAliasMeadowlarkIdsForDocumentByMeadowlarkId(
+  client: PoolClient,
+  meadowlarkId: MeadowlarkId,
+): Promise<MeadowlarkId[]> {
+  const querySelect = format(
+    `SELECT alias_meadowlark_id FROM meadowlark.aliases WHERE meadowlark_id = %L FOR SHARE NOWAIT`,
+    meadowlarkId,
+  );
+  const queryResult: QueryResult<any> = await client.query(querySelect);
+  return (hasResults(queryResult) ? queryResult.rows.map((ref) => ref.alias_meadowlark_id) : []) as MeadowlarkId[];
 }
 
 /**
- * Returns the SQL query to find the existence of an alias id. Alias ids include the document id
- * itself along with any superclass variations that the document satisifies. For example, a School is a subclass
- * of EducationOrganization, so each School document has an additional alias id as an EducationOrganization.
+ * Returns the alias meadowlarkIds for a given document. Alias meadowlarkIds include the document
+ * meadowlarkId itself along with any superclass variations that the document satisfies. For example, a School is a subclass
+ * of EducationOrganization, so each School document has an additional alias meadowlarkId as an EducationOrganization.
+ *
+ * This has a secondary function of read-for-write locking this row for proper updating and deleting.
+ *
+ * @param client database connector client.
+ * @param documentUuid the documentUuid of the document to find aliases for
+ * @returns an array of alias meadowlarkIds of the given document
+ */
+export async function findAliasMeadowlarkIdsForDocumentByDocumentUuid(
+  client: PoolClient,
+  documentUuid: DocumentUuid,
+): Promise<MeadowlarkDocumentIdAndAliasId[]> {
+  const querySelect = format(
+    `SELECT alias_meadowlark_id, meadowlark_id FROM meadowlark.aliases WHERE document_uuid = %L FOR SHARE NOWAIT`,
+    documentUuid,
+  );
+  const queryResult: QueryResult<any> = await client.query(querySelect);
+  return (
+    hasResults(queryResult)
+      ? queryResult.rows.map((ref) => ({
+          alias_meadowlark_id: ref.alias_meadowlark_id,
+          meadowlark_id: ref.meadowlark_id,
+        }))
+      : []
+  ) as MeadowlarkDocumentIdAndAliasId[];
+}
+/**
+ * Returns a list of alias meadowlarkIds. Alias meadowlarkIds include the document meadowlarkId
+ * itself along with any superclass variations that the document satisfies. For example, a School is a subclass
+ * of EducationOrganization, so each School document has an additional alias meadowlarkId as an EducationOrganization.
  *
  * This function does NOT read-for-write lock.
  *
- * @param documentId the id of the document to find aliases for
- * @returns a SQL query to find the alias ids of the given document
+ * @param client database connector client.
+ * @param meadowlarkId the meadowlarkId of the document to find aliases for
+ * @returns an array of alias meadowlarkIds of the given document
  */
-export function findAliasIdSql(documentId: string): string {
-  return format(`SELECT alias_id FROM meadowlark.aliases WHERE alias_id = %L`, documentId);
-}
-
-/**
- * Returns the SQL statement for retrieving a document (with identity)
- * @param documentId The identifier of the document to retrieve
- * @returns SQL query string to retrieve a document
- */
-export function findDocumentByIdSql(documentId: string): string {
-  return format(
-    `
-    SELECT document_id, document_identity, edfi_doc
-       FROM meadowlark.documents
-       WHERE document_id = %L;`,
-    [documentId],
+export async function findAliasMeadowlarkId(client: PoolClient, meadowlarkId: MeadowlarkId): Promise<MeadowlarkId[]> {
+  const querySelect = format(
+    `SELECT alias_meadowlark_id FROM meadowlark.aliases WHERE alias_meadowlark_id = %L`,
+    meadowlarkId,
   );
+  const queryResult: QueryResult<any> = await client.query(querySelect);
+  return (hasResults(queryResult) ? queryResult.rows.map((ref) => ref.alias_meadowlark_id) : []) as MeadowlarkId[];
 }
 
 /**
- * Returns the SQL query for retrieving the ownership for a given document
- * @param documentId The identifier of the document
- * @returns SQL query string to retrieve ownership
+ * Returns a document (with identity)
+ * @param client database connector client.
+ * @param meadowlarkId The MeadowlarkId of the document to retrieve
+ * @returns meadowlark document
  */
-export function findOwnershipForDocumentSql(documentId: string): string {
-  return format('SELECT created_by FROM meadowlark.documents WHERE document_id = %L;', [documentId]);
+export async function findDocumentByMeadowlarkId(
+  client: PoolClient,
+  meadowlarkId: MeadowlarkId,
+): Promise<MeadowlarkDocument> {
+  const querySelect = format(
+    `
+    SELECT document_uuid, meadowlark_id, document_identity, edfi_doc, created_at, last_modified_at
+       FROM meadowlark.documents
+       WHERE meadowlark_id = %L;`,
+    meadowlarkId,
+  );
+  const queryResult: QueryResult<any> = await client.query(querySelect);
+  return hasResults(queryResult) ? (queryResult.rows[0] as MeadowlarkDocument) : NoMeadowlarkDocument;
 }
 
 /**
- * Returns the SQL statement for retrieving alias ids from the aliases table for the given
+ * Returns a document (with identity)
+ * @param client database connector client.
+ * @param documentUuid The DocumentUuid of the document to retrieve
+ * @returns meadowlark document
+ */
+export async function findDocumentByDocumentUuid(
+  client: PoolClient,
+  documentUuid: DocumentUuid,
+): Promise<MeadowlarkDocument> {
+  const querySelect = format(
+    `
+    SELECT document_uuid, meadowlark_id, document_identity, edfi_doc, created_at, last_modified_at
+       FROM meadowlark.documents
+       WHERE document_uuid = %L;`,
+    documentUuid,
+  );
+  const queryResult: QueryResult<any> = await client.query(querySelect);
+  return hasResults(queryResult) ? (queryResult.rows[0] as MeadowlarkDocument) : NoMeadowlarkDocument;
+}
+
+/**
+ * Returns the the ownership for a given document
+ * @param client database connector client.
+ * @param documentUuid The documentUuid of the document
+ * @returns a meadowlark document to retrieve ownership
+ */
+export async function findOwnershipForDocumentByDocumentUuid(
+  client: PoolClient,
+  documentUuid: DocumentUuid,
+): Promise<MeadowlarkDocument> {
+  const querySelect = format('SELECT created_by FROM meadowlark.documents WHERE document_uuid = %L;', [documentUuid]);
+  const queryResult: QueryResult<any> = await client.query(querySelect);
+  return hasResults(queryResult) ? (queryResult.rows[0] as MeadowlarkDocument) : NoMeadowlarkDocument;
+}
+
+/**
+ * Returns the the ownership for a given document
+ * @param client database connector client.
+ * @param meadowlarkId The meadowlarkId of the document
+ * @returns a meadowlark document to retrieve ownership
+ */
+export async function findOwnershipForDocumentByMeadowlarkId(
+  client: PoolClient,
+  meadowlarkId: MeadowlarkId,
+): Promise<MeadowlarkDocument> {
+  const querySelect = format('SELECT created_by FROM meadowlark.documents WHERE meadowlark_id = %L;', [meadowlarkId]);
+  const queryResult: QueryResult<any> = await client.query(querySelect);
+  return hasResults(queryResult) ? (queryResult.rows[0] as MeadowlarkDocument) : NoMeadowlarkDocument;
+}
+
+/**
+ * Returns the alias meadowlarkIds from the aliases table for the given
  * documents. This allows for checking for the existence of documents from the aliases table for deletes
  * and general reference validation.
  *
- * @param documentIds the id of the document we're checking references for
- * @returns SQL query string to retrieve existing alias ids
+ * @param client database connector client.
+ * @param meadowlarkIds the array of meadowlarkId of the document we're checking references for
+ * @returns an array of alias meadowlarkIds
  */
-export function validateReferenceExistenceSql(documentIds: string[]): string {
-  return format(`SELECT alias_id FROM meadowlark.aliases WHERE alias_id IN (%L) FOR NO KEY UPDATE NOWAIT`, documentIds);
+export async function validateReferenceExistence(
+  client: PoolClient,
+  meadowlarkIds: MeadowlarkId[],
+): Promise<MeadowlarkId[]> {
+  const querySelect = format(
+    `SELECT alias_meadowlark_id FROM meadowlark.aliases WHERE alias_meadowlark_id IN (%L) FOR NO KEY UPDATE NOWAIT`,
+    meadowlarkIds,
+  );
+  const queryResult: QueryResult<any> = await client.query(querySelect);
+  return (hasResults(queryResult) ? queryResult.rows.map((ref) => ref.alias_meadowlark_id) : []) as MeadowlarkId[];
 }
 
 /**
- * Returns the SQL statement to find up to five documents that reference this document.
+ * Returns a list alias meadowlarkIds from the aliases table for the given
+ * documents. This allows for checking for the existence of documents from the aliases table for deletes
+ * and general reference validation.
+ *
+ * @param client database connector client.
+ * @param documentUuids the DocumentUuid array of the document we're checking references for
+ * @returns SQL query string to retrieve existing alias meadowlarkIds
+ */
+export async function validateReferenceExistenceByDocumentUuid(
+  client: PoolClient,
+  documentUuids: DocumentUuid[],
+): Promise<MeadowlarkId[]> {
+  const querySelect = format(
+    `SELECT alias_meadowlark_id FROM meadowlark.aliases WHERE document_uuid IN (%L) FOR NO KEY UPDATE NOWAIT`,
+    documentUuids,
+  );
+  const queryResult: QueryResult<any> = await client.query(querySelect);
+  return (hasResults(queryResult) ? queryResult.rows.map((ref) => ref.alias_meadowlark_id) : []) as MeadowlarkId[];
+}
+
+/**
+ * Returns up to five documents that reference this document.
  * This is for error reporting when an attempt is made to delete the document.
  *
- * @param referringDocumentIds The referring documents
- * @returns SQL query string to retrieve the document_id and resource_name of the referring documents
+ * @param client database connector client.
+ * @param referringMeadowlarkIds The referring documents
+ * @returns an array of the referring documents
  */
-export function findReferringDocumentInfoForErrorReportingSql(referringDocumentIds: string[]): string {
-  return format(
-    `SELECT project_name, resource_name, resource_version, document_id FROM meadowlark.documents WHERE document_id IN (%L) LIMIT 5`,
-    referringDocumentIds,
+export async function findReferringDocumentInfoForErrorReporting(
+  client: PoolClient,
+  referringMeadowlarkIds: MeadowlarkId[],
+): Promise<ReferringDocumentInfo[]> {
+  const querySelect = format(
+    `SELECT project_name, resource_name, resource_version, meadowlark_id, document_uuid FROM meadowlark.documents WHERE meadowlark_id IN (%L) LIMIT 5`,
+    referringMeadowlarkIds,
   );
+  const queryResult: QueryResult<any> = await client.query(querySelect);
+  return (
+    hasResults(queryResult)
+      ? queryResult.rows.map((document) => ({
+          resourceName: document.resource_name,
+          meadowlarkId: document.meadowlark_id,
+          documentUuid: document.document_uuid,
+          projectName: document.project_name,
+          resourceVersion: document.resource_version,
+        }))
+      : []
+  ) as ReferringDocumentInfo[];
 }
 
-// SQL for inserts/updates/upserts
-
 /**
- * Returns the SQL statement to add an alias entry to the alias table
- * @param documentId the document with the given alias id
- * @param aliasId the alias id for the given document, this may be the same as the documentId
- * @returns SQL query string to insert into the aliases table
+ * Inserts an alias entry to the alias table
+ * @param meadowlarkId the document with the given alias meadowlarkId
+ * @param aliasId the alias meadowlarkId for the given document, this may be the same as the meadowlarkId
+ * @returns if the result returned rows
  */
-export function insertAliasSql(documentId: string, aliasId: string): string {
-  return format(
+export async function insertAlias(
+  client: PoolClient,
+  documentUuid: DocumentUuid,
+  meadowlarkId: MeadowlarkId,
+  aliasId: MeadowlarkId,
+): Promise<boolean> {
+  const queryInsert = format(
     `INSERT INTO meadowlark.aliases
-     (document_id, alias_id)
+     (document_uuid, meadowlark_id, alias_meadowlark_id)
      VALUES (%L)`,
-    [documentId, aliasId],
+    [documentUuid, meadowlarkId, aliasId],
   );
+  const queryResult: QueryResult<any> = await client.query(queryInsert);
+
+  return hasResults(queryResult);
 }
 
 /**
- * Returns the SQL statement to insert an outbound reference for a document into the references table
- * @param documentId The parent document of the reference
- * @param referencedDocumentId The document that is referenced
- * @returns SQL query string to insert reference into references table
+ * Inserts an outbound reference for a document into the references table
+ * @param meadowlarkId The parent document of the reference
+ * @param referencedMeadowlarkId The document that is referenced
+ * @returns if the result returned rows
  */
-export function insertOutboundReferencesSql(documentId: string, referencedDocumentId: String): string {
-  return format('INSERT INTO meadowlark.references (parent_document_id, referenced_document_id) VALUES (%L);', [
-    documentId,
-    referencedDocumentId,
-  ]);
+export async function insertOutboundReferences(
+  client: PoolClient,
+  meadowlarkId: MeadowlarkId,
+  referencedMeadowlarkId: MeadowlarkId,
+): Promise<boolean> {
+  const queryInsert = format(
+    'INSERT INTO meadowlark.references (parent_meadowlark_id, referenced_meadowlark_id) VALUES (%L);',
+    [meadowlarkId, referencedMeadowlarkId],
+  );
+  const queryResult: QueryResult<any> = await client.query(queryInsert);
+  return hasResults(queryResult);
 }
 
 /**
- * Returns the SQL statement for inserting or updating a document in the database
- * @param param0 Document info for insert/update
- * @param isInsert is insert or update SQL re
- * @returns SQL query string for inserting or updating provided document info
+ * Updates a document in the database
  */
-export function documentInsertOrUpdateSql(
-  { id, resourceInfo, documentInfo, edfiDoc, validateDocumentReferencesExist, security },
-  isInsert: boolean,
-): string {
-  const documentValues = [
-    id,
-    JSON.stringify(documentInfo.documentIdentity),
-    resourceInfo.projectName,
-    resourceInfo.resourceName,
-    resourceInfo.resourceVersion,
-    resourceInfo.isDescriptor,
-    validateDocumentReferencesExist,
-    security.clientId,
+export async function updateDocument(
+  client: PoolClient,
+  {
+    meadowlarkId,
+    documentUuid,
+    resourceInfo,
+    documentInfo,
     edfiDoc,
-  ];
-
-  let documentSql: string;
-
-  if (isInsert) {
-    documentSql = format(
-      `
-      INSERT INTO meadowlark.documents
-        (document_id, document_identity, project_name, resource_name, resource_version, is_descriptor,
-        validated, created_by, edfi_doc)
-        VALUES (%L)
-        RETURNING document_id;`,
-      documentValues,
-    );
-  } else {
-    documentSql = format(
-      `
+    validateDocumentReferencesExist,
+    security,
+  }: UpdateRequest,
+): Promise<boolean> {
+  const queryResult: QueryResult<any> = await client.query(
+    `
       UPDATE meadowlark.documents
         SET
-        document_id = %L,
-        document_identity = %L,
-        project_name = %L,
-        resource_name = %L,
-        resource_version = %L,
-        is_descriptor = %L,
-        validated = %L,
-        created_by = %L,
-        edfi_doc = %L
-        WHERE meadowlark.documents.document_id = %1$L;`,
-      documentValues[0],
-      documentValues[1],
-      documentValues[2],
-      documentValues[3],
-      documentValues[4],
-      documentValues[5],
-      documentValues[6],
-      documentValues[7],
-      documentValues[8],
-    );
-  }
-  return documentSql;
-}
-
-// SQL for Deletes
-
-/**
- * Returns the SQL query for deleting a document from the database
- * @param documentId the document to delete from the documents table
- * @returns SQL query string to delete the document
- */
-export function deleteDocumentByIdSql(documentId: string): string {
-  return format(
-    'with del as (DELETE FROM meadowlark.documents WHERE document_id = %L RETURNING id) SELECT COUNT(*) FROM del;',
-    [documentId],
+        meadowlark_id = $1,
+        document_identity = $2,
+        project_name = $3,
+        resource_name = $4,
+        resource_version = $5,
+        is_descriptor = $6,
+        validated = $7,
+        created_by = $8,
+        edfi_doc = $9,
+        last_modified_at = $10
+        WHERE meadowlark.documents.document_uuid = $11;`,
+    [
+      meadowlarkId,
+      JSON.stringify(documentInfo.documentIdentity),
+      resourceInfo.projectName,
+      resourceInfo.resourceName,
+      resourceInfo.resourceVersion,
+      resourceInfo.isDescriptor,
+      validateDocumentReferencesExist,
+      security.clientId,
+      edfiDoc,
+      documentInfo.requestTimestamp,
+      documentUuid,
+    ],
   );
+
+  return hasResults(queryResult);
 }
 
 /**
- * Returns the SQL query for deleting the outbound references of a document from the database.
+ * Inserts a document in the database
+ */
+export async function insertDocument(
+  client: PoolClient,
+  {
+    meadowlarkId,
+    documentUuid,
+    resourceInfo,
+    documentInfo,
+    edfiDoc,
+    validateDocumentReferencesExist,
+    security,
+  }: UpdateRequest,
+): Promise<boolean> {
+  const queryResult: QueryResult<any> = await client.query(
+    `
+      INSERT INTO meadowlark.documents
+        (meadowlark_id, document_uuid, document_identity, project_name, resource_name, resource_version, is_descriptor,
+        validated, created_by, edfi_doc, created_at, last_modified_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        RETURNING document_uuid;`,
+    [
+      meadowlarkId,
+      documentUuid,
+      JSON.stringify(documentInfo.documentIdentity),
+      resourceInfo.projectName,
+      resourceInfo.resourceName,
+      resourceInfo.resourceVersion,
+      resourceInfo.isDescriptor,
+      validateDocumentReferencesExist,
+      security.clientId,
+      edfiDoc,
+      documentInfo.requestTimestamp,
+      documentInfo.requestTimestamp,
+    ],
+  );
+
+  return hasResults(queryResult);
+}
+
+// Deletes
+/**
+ * Checks a delete result to return a deleteResult
+ * @param deleteQueryResult The result from database
+ * @param countDeletedRows if true, it validates if at least one row was deleted.
+ * @returns a DeleteResult
+ */
+async function checkDeleteResult(
+  client: PoolClient,
+  deleteQueryResult: QueryResult<any>,
+  countDeletedRows: boolean = false,
+): Promise<DeleteResult> {
+  const deleteResult: DeleteResult = { response: 'UNKNOWN_FAILURE', failureMessage: '' };
+  if (!hasResults(deleteQueryResult)) {
+    await rollbackTransaction(client);
+    deleteResult.failureMessage = `deleteDocumentByDocumentUuId: Failure deleting document, a null result was returned`;
+    return deleteResult;
+  }
+  if (countDeletedRows) {
+    return deleteQueryResult.rows[0].count === 0
+      ? { response: 'DELETE_FAILURE_NOT_EXISTS' }
+      : { response: 'DELETE_SUCCESS' };
+  }
+  return { response: 'DELETE_SUCCESS' };
+}
+/**
+ * Deletes a document from the database
+ * @param meadowlarkId the document to delete from the documents table
+ * @returns a DeleteResult
+ */
+export async function deleteDocumentRowByDocumentUuid(
+  client: PoolClient,
+  documentUuid: DocumentUuid,
+): Promise<DeleteResult> {
+  const deleteQuery = format(
+    'with del as (DELETE FROM meadowlark.documents WHERE document_uuid = %L RETURNING id) SELECT COUNT(*) FROM del;',
+    [documentUuid],
+  );
+  const deleteQueryResult: QueryResult<any> = await client.query(deleteQuery);
+  return checkDeleteResult(client, deleteQueryResult, true);
+}
+
+/**
+ * Deletes the outbound references of a document from the database.
  * Used as part of deleting the document itself.
  *
- * @param documentId the id of the document whose outbound references we want to delete
- * @returns SQL query string to delete references
+ * @param meadowlarkId the meadowlarkId of the document whose outbound references we want to delete
+ * @returns if the result returned rows
  */
-export function deleteOutboundReferencesOfDocumentSql(documentId: string): string {
-  const sql = format('DELETE FROM meadowlark.references WHERE parent_document_id = (%L);', [documentId]);
-  return sql;
+export async function deleteOutboundReferencesOfDocumentByMeadowlarkId(
+  client: PoolClient,
+  meadowlarkId: MeadowlarkId,
+): Promise<Boolean> {
+  const deleteQuery = format('DELETE FROM meadowlark.references WHERE parent_meadowlark_id = (%L);', [meadowlarkId]);
+  const deleteQueryResult: QueryResult<any> = await client.query(deleteQuery);
+  return hasResults(deleteQueryResult);
 }
 
 /**
- * Returns the SQL query for deleting aliases for a given document id. Used as part of deleting the document itself.
- * @param documentId the id of the document we're deleting aliases for
- * @returns SQL query string for deleting aliases
+ * Deletes aliases for a given document meadowlarkId. Used as part of deleting the document itself.
+ * @param meadowlarkId the meadowlarkId of the document we're deleting aliases for
+ * @returns if the result returned rows
  */
-export function deleteAliasesForDocumentSql(documentId: string): string {
-  return format(
+export async function deleteAliasesForDocumentByMeadowlarkId(
+  client: PoolClient,
+  meadowlarkId: MeadowlarkId,
+): Promise<Boolean> {
+  const deleteQuery = format(
     `DELETE from meadowlark.aliases
-  WHERE document_id = %L`,
-    [documentId],
+  WHERE meadowlark_id = %L;`,
+    [meadowlarkId],
   );
+  const deleteQueryResult: QueryResult<any> = await client.query(deleteQuery);
+  return hasResults(deleteQueryResult);
 }
 
+// Authorization
+/**
+ * @param client database connector client.
+ * @param authorizationClient authorization client
+ * @returns query result
+ */
+export async function insertOrUpdateAuthorization(
+  authorizationClient: AuthorizationDocument,
+  client: PoolClient,
+): Promise<boolean> {
+  const documentSql: string = `
+  INSERT INTO meadowlark.authorizations (client_id, client_secret_hashed, client_name, roles, is_bootstrap_admin, active)
+  VALUES ($1, $2, $3, $4, $5, $6)
+  ON CONFLICT (client_id) DO UPDATE
+  SET client_secret_hashed = EXCLUDED.client_secret_hashed,
+      client_name = EXCLUDED.client_name,
+      roles = EXCLUDED.roles,
+      is_bootstrap_admin = EXCLUDED.is_bootstrap_admin,
+      active = EXCLUDED.active;`;
+  const queryResult: QueryResult<any> = await client.query(documentSql, [
+    // eslint-disable-next-line no-underscore-dangle
+    authorizationClient._id,
+    authorizationClient.clientSecretHashed,
+    authorizationClient.clientName,
+    authorizationClient.roles,
+    authorizationClient.isBootstrapAdmin ?? false,
+    authorizationClient.active ?? true,
+  ]);
+  return hasResults(queryResult);
+}
+
+/**
+ * Returns a list of authorization clients
+ * @param client
+ * @returns
+ */
+export async function getAuthorizationClientDocumentList(client: PoolClient): Promise<GetAllAuthorizationClientsResult> {
+  const selectAllAuthorizationClientsSql = `
+  SELECT client_id, client_name, active, roles
+  FROM meadowlark.authorizations;`;
+
+  const queryResult: QueryResult<any> = await client.query(selectAllAuthorizationClientsSql);
+  if (!hasResults(queryResult)) return { response: 'GET_FAILURE_NOT_EXISTS' };
+  return {
+    response: 'GET_SUCCESS',
+    clients: queryResult.rows.map((x) => ({
+      clientId: x.client_id,
+      clientName: x.client_name,
+      active: x.active,
+      roles: x.roles as AuthorizationClientRole[], // Assuming roles are stored as an array in the database
+    })),
+  };
+}
+
+/**
+ * Returns the authorization client by Id
+ * @param clientId
+ * @param client
+ * @returns
+ */
+export async function getAuthorizationClientDocumentById(clientId, client: PoolClient): Promise<AuthorizationDocument> {
+  const selectAuthorizationClientByIdSql = format(
+    `
+      SELECT client_id, client_name, active, roles, client_secret_hashed, is_bootstrap_admin
+      FROM meadowlark.authorizations
+      WHERE client_id = %L;`,
+    [clientId],
+  );
+  const queryResult: QueryResult<any> = await client.query(selectAuthorizationClientByIdSql);
+
+  if (!hasResults(queryResult)) return NoAuthorizationDocument;
+
+  const result = queryResult.rows[0];
+
+  return {
+    _id: result.client_id,
+    clientName: result.client_name,
+    roles: result.roles as AuthorizationClientRole[], // Assuming roles are stored as an array in the database
+    active: result.active ?? true,
+    isBootstrapAdmin: result.is_bootstrap_admin ?? false,
+    clientSecretHashed: result.client_secret_hashed,
+  };
+}
+
+/**
+ * Reset an authorization client by its ClientId
+ * @param request
+ * @param client
+ * @returns
+ */
+export async function resetAuthorizationClientSecretByClientId(
+  request: ResetAuthorizationClientSecretRequest,
+  client: PoolClient,
+): Promise<ResetAuthorizationClientSecretResult> {
+  const resetAuthorizationClientSecretSql = `
+  UPDATE meadowlark.authorizations
+  SET client_secret_hashed = $1
+  WHERE client_id = $2
+  RETURNING *;`;
+  const resetResult: ResetAuthorizationClientSecretResult = { response: 'UNKNOWN_FAILURE' };
+  const queryResult: QueryResult<any> = await client.query(resetAuthorizationClientSecretSql, [
+    request.clientSecretHashed,
+    request.clientId,
+  ]);
+
+  if (!hasResults(queryResult)) {
+    resetResult.response = 'RESET_FAILED_NOT_EXISTS';
+  } else {
+    resetResult.response = 'RESET_SUCCESS';
+  }
+  return resetResult;
+}
+
+/**
+ * Checks if the bootstrap Admin exists.
+ * @param client
+ * @returns
+ */
+export async function checkBootstrapAdminExists(client: PoolClient): Promise<boolean> {
+  const checkBootstrapAdminExistsSql = `
+  SELECT count(1) as total
+  FROM meadowlark.authorizations
+  WHERE is_bootstrap_admin = true;
+`;
+  const queryResult: QueryResult<any> = await client.query(checkBootstrapAdminExistsSql);
+  return hasResults(queryResult) && queryResult.rows[0].total > 0;
+}
+
+/**
+ * Inserts a bootstrap Admin to use the authorization.
+ * @param authorizationClient
+ * @param client
+ * @returns
+ */
+export async function insertBootstrapAdmin(
+  authorizationClient: AuthorizationDocument,
+  client: PoolClient,
+): Promise<boolean> {
+  return insertOrUpdateAuthorization({ ...authorizationClient, isBootstrapAdmin: true }, client);
+}
+
+/**
+ * Updates the document authorization by ClientId
+ * @param updateAuthorizationClientRequest
+ * @param client
+ * @returns
+ */
+export async function updateAuthorizationClientDocumentByClientId(
+  updateAuthorizationClientRequest: UpdateAuthorizationClientRequest,
+  client: PoolClient,
+): Promise<boolean> {
+  const updateSql = `
+  UPDATE meadowlark.authorizations
+  SET client_name = $1, roles = $2, active = $3
+  WHERE client_id = $4
+  RETURNING *;
+`;
+  const queryResult: QueryResult<any> = await client.query(updateSql, [
+    updateAuthorizationClientRequest.clientName,
+    updateAuthorizationClientRequest.roles,
+    updateAuthorizationClientRequest.active ?? true,
+    updateAuthorizationClientRequest.clientId,
+  ]);
+  return hasResults(queryResult);
+}
 // SQL for DDL
 
 /**
- * Returns the SQL to create the meadowlark database
+ * Creates the meadowlark database
  * @param meadowlarkDbName the name of the database to create
- * @returns SQL query string to create the database
+ * @returns if the result returned rows
  */
-export function createDatabaseSql(meadowlarkDbName: string): string {
-  return format('CREATE DATABASE %I', meadowlarkDbName);
+export async function createDatabase(client: Client, meadowlarkDbName: string): Promise<boolean> {
+  const createDatabaseScript = format('CREATE DATABASE %I', meadowlarkDbName);
+  const createDatabaseResult: QueryResult<any> = await client.query(createDatabaseScript);
+  return hasResults(createDatabaseResult);
 }
 
 /**
  * SQL query string to create schema in the meadowlark database
  */
-export const createSchemaSql = 'CREATE SCHEMA IF NOT EXISTS meadowlark';
+const createSchemaSql = 'CREATE SCHEMA IF NOT EXISTS meadowlark';
 
 /**
- * SQL query string to create document table
+ * SQL query string to create documents table.
+ *
+ * The documents table stores MeadowlarkDocuments, which are queried for either by
+ * documentUuid or meadowlarkId both of which are unique for a particular
+ * MeadowlarkDocument. The table contains the Ed-Fi API doocument as edfi_doc,
+ * plus metadata about the document including resource and version information.
  */
-export const createDocumentTableSql = `
+const createDocumentTableSql = `
   CREATE TABLE IF NOT EXISTS meadowlark.documents(
   id bigserial PRIMARY KEY,
-  document_id VARCHAR(56) NOT NULL,
+  meadowlark_id VARCHAR(56) NOT NULL,
+  document_uuid UUID NOT NULL,
   document_identity JSONB NOT NULL,
   project_name VARCHAR NOT NULL,
   resource_name VARCHAR NOT NULL,
   resource_version VARCHAR NOT NULL,
-  is_descriptor boolean NOT NULL,
-  validated boolean NOT NULL,
+  is_descriptor BOOLEAN NOT NULL,
+  validated BOOLEAN NOT NULL,
   created_by VARCHAR(100) NULL,
+  created_at BIGINT NOT NULL,
+  last_modified_at BIGINT NOT NULL,
   edfi_doc JSONB NOT NULL);`;
 
-// All queries are on document_id, which must be unique
-export const createDocumentTableUniqueIndexSql =
-  'CREATE UNIQUE INDEX IF NOT EXISTS ux_meadowlark_documents ON meadowlark.documents(document_id)';
+// Index for queries on meadowlark_id, which must be unique
+const createDocumentTableMeadowlarkIdUniqueIndexSql =
+  'CREATE UNIQUE INDEX IF NOT EXISTS ux_meadowlark_documents ON meadowlark.documents(meadowlark_id)';
+
+// Index for queries on document_uuid, which must be unique
+const createDocumentTableDocumentUuidUniqueIndexSql =
+  'CREATE UNIQUE INDEX IF NOT EXISTS ux_meadowlark_document_uuid ON meadowlark.documents(document_uuid)';
 
 /**
  * SQL query string to create authorizations document table
@@ -277,40 +726,77 @@ export const createAuthorizationsTableSql = `
   is_bootstrap_admin BOOLEAN NOT NULL,
   active BOOLEAN NOT NULL);`;
 
-// Index the client name
-export const createAuthorizationsTableUniqueIndexSql = 
-  'CREATE INDEX IF NOT EXISTS idx_authorizations_client_name ON meadowlark.authorizations(client_name)'; // should this be unique? - MaxP
+// Index the client id
+export const createAuthorizationsTableUniqueClientIdIndexSql =
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_authorizations_client_id ON meadowlark.authorizations(client_id);';
 
 /**
- * SQL query string to create the references table
+ * SQL query string to create the references table.
+ *
+ * The references table is used to encode information on references between documents, which is
+ * necessary for reference validation. For each document's meadowlarkId (as parent_meadowlark_id),
+ * there is a row for the meadowlarkId of each document it references (as referenced_meadowlark_id).
+ *
+ * Because both columns are indexed, this allows for trivial queries to find all the documents
+ * referenced by a document, and all the documents that reference a document.
  */
-export const createReferencesTableSql = `
+const createReferencesTableSql = `
   CREATE TABLE IF NOT EXISTS meadowlark.references(
   id bigserial PRIMARY KEY,
-  parent_document_id VARCHAR NOT NULL,
-  referenced_document_id VARCHAR NOT NULL);`;
+  parent_meadowlark_id VARCHAR NOT NULL,
+  referenced_meadowlark_id VARCHAR NOT NULL);`;
 
 // For reference checking before parent delete
-export const createReferencesTableCheckingIndexSql =
-  'CREATE INDEX IF NOT EXISTS ix_meadowlark_references_checking ON meadowlark.references(referenced_document_id)';
+const createReferencesTableCheckingIndexSql =
+  'CREATE INDEX IF NOT EXISTS ix_meadowlark_references_checking ON meadowlark.references(referenced_meadowlark_id)';
 
 // For reference removal in transaction with parent update/delete
-export const createReferencesTableDeletingIndexSql =
-  'CREATE INDEX IF NOT EXISTS ix_meadowlark_references_deleting ON meadowlark.references(parent_document_id)';
+const createReferencesTableDeletingIndexSql =
+  'CREATE INDEX IF NOT EXISTS ix_meadowlark_references_deleting ON meadowlark.references(parent_meadowlark_id)';
 
 /**
  * SQL query string to create the aliases table
  */
-export const createAliasesTableSql = `
+const createAliasesTableSql = `
   CREATE TABLE IF NOT EXISTS meadowlark.aliases(
     id bigserial PRIMARY KEY,
-    document_id VARCHAR,
-    alias_id VARCHAR);`;
+    meadowlark_id VARCHAR,
+    document_uuid uuid,
+    alias_meadowlark_id VARCHAR);`;
 
-// For finding alias ids given a document id
-export const createAliasesTableDocumentIndexSql =
-  'CREATE INDEX IF NOT EXISTS ix_meadowlark_aliases_document_id ON meadowlark.aliases(document_id)';
+// For finding alias meadowlarkIds given a document meadowlarkId
+const createAliasesTableMeadowlarkIdIndexSql =
+  'CREATE INDEX IF NOT EXISTS ix_meadowlark_aliases_meadowlark_id ON meadowlark.aliases(meadowlark_id)';
 
-// For finding document ids given an alias id
-export const createAliasesTableAliasIndexSql =
-  'CREATE INDEX IF NOT EXISTS ix_meadowlark_aliases_alias_id ON meadowlark.aliases(alias_id)';
+// For finding alias meadowlarkIds given a document_uuid
+const createAliasesTableDocumentUuidIndexSql =
+  'CREATE INDEX IF NOT EXISTS ix_meadowlark_aliases_document_uuid ON meadowlark.aliases(document_uuid)';
+
+// For finding document meadowlarkIds given an alias meadowlarkId
+const createAliasesTableAliasMeadowlarkIdIndexSql =
+  'CREATE INDEX IF NOT EXISTS ix_meadowlark_aliases_alias_meadowlark_id ON meadowlark.aliases(alias_meadowlark_id)';
+
+/**
+ * Checks that the meadowlark schema, document and references tables exist in the database, if not will create them
+ * @param client The Postgres client for querying
+ */
+export async function checkExistsAndCreateTables(client: PoolClient) {
+  try {
+    await client.query(createSchemaSql);
+    await client.query(createDocumentTableSql);
+    await client.query(createDocumentTableMeadowlarkIdUniqueIndexSql);
+    await client.query(createDocumentTableDocumentUuidUniqueIndexSql);
+    await client.query(createReferencesTableSql);
+    await client.query(createReferencesTableCheckingIndexSql);
+    await client.query(createReferencesTableDeletingIndexSql);
+    await client.query(createAliasesTableSql);
+    await client.query(createAliasesTableMeadowlarkIdIndexSql);
+    await client.query(createAliasesTableDocumentUuidIndexSql);
+    await client.query(createAliasesTableAliasMeadowlarkIdIndexSql);
+    await client.query(createAuthorizationsTableSql);
+    await client.query(createAuthorizationsTableUniqueClientIdIndexSql);
+  } catch (e) {
+    Logger.error(`${moduleName}.checkExistsAndCreateTables error connecting to PostgreSQL`, null, e);
+    throw e;
+  }
+}
