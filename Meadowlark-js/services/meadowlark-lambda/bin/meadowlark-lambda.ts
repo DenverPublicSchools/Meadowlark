@@ -24,7 +24,7 @@ async function main() {
   const resSpec = (await swaggerForResourcesAPI(mockRequest)).body;
   const descSpec = (await swaggerForDescriptorsAPI(mockRequest)).body;
 
-  new MeadowlarkLambdaStack(app, 'MeadowlarkLambdaStack-v3', {
+  new MeadowlarkLambdaStack(app, 'MeadowlarkLambdaStack-v1', {
     resourcesSwaggerDefinition: resSpec as string,
     descriptorsSwaggerDefinition: descSpec as string,
     dotenvVars,

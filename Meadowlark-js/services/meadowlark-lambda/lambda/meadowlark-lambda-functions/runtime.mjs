@@ -2,6 +2,7 @@
 // node_modules/lambda-runtime/dist/node16/index.mjs
 import { createRequire } from "module";
 import bootstrap from '/var/task/utilities/BootstrapMeadowlark.js';
+// import bootstrap from './dist/utilities/BootstrapMeadowlark.js';
 var require2 = createRequire(import.meta.url);
 var __defProp = Object.defineProperty;
 var __defProps = Object.defineProperties;
@@ -1263,7 +1264,25 @@ async function meadowlarkLambdaRuntimeStart() {
   console.log("MeadowlarkRuntimeStart")
 
   // before starting, lets trigger a function that will boostrap meadowlark
-  await bootstrap.bootstrap();
+  try {
+    await bootstrap();
+  } catch (err) {
+    console.log(`Failed to bootstrap: ${err.message}, ${typeof bootstrap}`);
+  }
+
+  try {
+    await bootstrap.bootstrap();
+  } catch (err) {
+    console.log(`Failed to bootstrap: ${err.message}, ${typeof bootstrap}`);
+    console.log(bootstrap);
+  }
+
+  try {
+    await bootstrap.default();
+  } catch (err) {
+    console.log(`Failed to bootstrap: ${err.message}, ${typeof bootstrap}`);
+    console.log(bootstrap);
+  }
   // const handlerFunc = await UserFunction.load(process.env.LAMBDA_TASK_ROOT, 'index.handler');
   // handlerFunc({}, {}, () => {
   //   console.log("Sucessfully intercepted runtime start and boostrapped meadowlark!")

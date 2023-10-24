@@ -60,7 +60,7 @@ export class MeadowlarkLambdaStack extends cdk.Stack {
     });
 
     const envVars = props.dotenvVars;
-    const prevGatewayUrl = "https://5nl4jol0fg.execute-api.us-west-2.amazonaws.com"; // This has been hardcoded because we can't create the lambda functions without the info that is needed to generate the info, therefore we have to create the whole stack and then update it with the corrected env vars.
+    const prevGatewayUrl = "https://btmz35gev6.execute-api.us-west-2.amazonaws.com"; // This has been hardcoded because we can't create the lambda functions without the info that is needed to generate the info, therefore we have to create the whole stack and then update it with the corrected env vars.
     envVars["OAUTH_SERVER_ENDPOINT_FOR_OWN_TOKEN_REQUEST"] = `${prevGatewayUrl}/${Config.get('MEADOWLARK_STAGE')}/oauth/token`;
     envVars["OAUTH_SERVER_ENDPOINT_FOR_TOKEN_VERIFICATION"] = `${prevGatewayUrl}/${Config.get('MEADOWLARK_STAGE')}/oauth/verify`;
 
