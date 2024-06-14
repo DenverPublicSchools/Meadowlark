@@ -1,0 +1,19 @@
+{
+    "compilerOptions": {
+        "target": "ES2021",
+        "module": "NodeNext",
+        "moduleResolution": "node",
+        "outDir": "dist",
+        "sourceMap": true,
+        "inlineSources": true,
+        "lib": [
+            "es2021"
+        ],
+    },
+    "typeRoots": [
+        "./node_modules/@types"
+    ],
+    "exclude": [
+        "node_modules",
+    ]
+}
